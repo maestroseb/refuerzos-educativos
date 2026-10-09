@@ -3,6 +3,9 @@
  * El resto del código accede a los campos por nombre, nunca por índice.
  */
 const PROP_BD_ID = 'BD_ID';
+// Icono de la pestaña del navegador (PNG 256×256 del propio repo, público;
+// se regenera con tools/generar_favicon.js).
+const FAVICON_URL = 'https://raw.githubusercontent.com/maestroseb/refuerzos-educativos/main/docs/img/favicon.png';
 const NOMBRE_BD = 'Refuerzos educativos — Base de datos';
 const MATERIAS_DEF = ['Lengua', 'Matemáticas', 'Otros'];
 
