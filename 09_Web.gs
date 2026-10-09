@@ -3,6 +3,7 @@ function doGet() {
   bd_(); // crea la BD la primera vez
   return HtmlService.createTemplateFromFile('index').evaluate()
     .setTitle('Refuerzos · Diario de sesiones')
+    .setFaviconUrl(FAVICON_URL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
