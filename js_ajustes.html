@@ -1,0 +1,180 @@
+<script>
+/* =====================================================================
+   Vista AJUSTES (solo administración): centro y conexión con la hoja
+   madre, profesorado, horarios de refuerzo, alumnado, tramos y grupos.
+   ===================================================================== */
+let tabAjustes = 'general';
+VISTAS.ajustes = function(el) {
+  if (!S.d.yo.admin) return ir('registrar');
+  const tabs = [['general', 'General'], ['docentes', 'Profesorado'], ['horarios', 'Horarios'], ['alumnado', 'Alumnado'], ['estructura', 'Tramos y grupos']];
+  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Ajustes</div><h1 class="h1">Configura el <em>centro</em></h1></header>' +
+    '<div class="tabs" role="tablist">' + tabs.map(([k, t]) => '<button role="tab" data-tab="' + k + '" aria-selected="' + (tabAjustes === k) + '">' + t + '</button>').join('') + '</div><div id="aBody" style="max-width:920px"></div>';
+  el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tabAjustes = b.dataset.tab; el.querySelectorAll('[data-tab]').forEach(x => x.setAttribute('aria-selected', x === b)); pintarAjustes(); });
+  pintarAjustes();
+};
+function pintarAjustes() { ({ general: ajGeneral, docentes: ajDocentes, horarios: ajHorarios, alumnado: ajAlumnado, estructura: ajEstructura })[tabAjustes]($('#aBody')); }
+function recargar(msg) {
+  return api('inicio').then(d => { S.d = d; indexar(); pintarYo(); if (msg) toast(msg); pintarAjustes(); });
+}
+
+/* ---------- General ---------- */
+function ajGeneral(c) {
+  const d = S.d;
+  c.innerHTML = '<div class="stack-l">' +
+    '<section class="card stack"><h2 class="h2">Hoja madre</h2><p class="muted" style="margin:4px 0 0">Pega el enlace de la base de datos del Gestor de Horarios y Sustituciones. Se copiarán tramos, grupos, profesorado (con sus emails) y las franjas de <b>Refuerzo</b> de las localizaciones.</p>' +
+    '<input class="input" id="madre" placeholder="https://docs.google.com/spreadsheets/d/…" value="' + esc(d.madreId ? 'https://docs.google.com/spreadsheets/d/' + d.madreId : '') + '">' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn primary" id="sync">' + IC.sync + 'Sincronizar ahora</button><span class="muted" style="font-size:13px">' + (d.ultimaSincro ? 'Última: ' + esc(fechaCorta(d.ultimaSincro.slice(0, 10)) + ' ' + d.ultimaSincro.slice(11, 16)) : 'Nunca sincronizado') + '</span></div>' +
+    '<label class="switch"><span><b style="font-weight:600">Sincronizar cada noche</b><br><small class="muted">A las 6:00, para recoger cambios de horario y sustituciones</small></span><input type="checkbox" id="diaria"' + (d.sincroDiaria ? ' checked' : '') + '></label>' +
+    '<p class="muted" style="font-size:12.5px;margin:0">Los horarios editados aquí a mano no se sobrescriben al sincronizar.</p></section>' +
+    '<section class="card stack"><h2 class="h2">Centro</h2><div><label class="lbl" for="centro">Nombre</label><input class="input" id="centro" value="' + esc(d.centro) + '" placeholder="CEIP …"></div>' +
+    '<div><span class="lbl">Materias de refuerzo</span><div class="pills" id="mats">' + d.materias.map(m => '<span class="pill sm mat ' + claseMateria(m) + '" aria-pressed="true">' + esc(m) + '<button data-quita="' + esc(m) + '" aria-label="Quitar ' + esc(m) + '" style="margin-left:2px;opacity:.6">✕</button></span>').join('') +
+    '<input class="input sm" id="nuevaMat" placeholder="Añadir…" style="width:130px;border-radius:999px"></div></div>' +
+    '<div><button class="btn primary" id="gCentro">Guardar</button></div></section>' +
+    '<section class="card stack"><h2 class="h2">Datos</h2><p class="muted" style="margin:4px 0 0">Todo se guarda en una hoja de cálculo de tu Drive. Puedes abrirla para revisarla o hacer tus propias tablas.</p><div><a class="btn" href="' + esc(d.bdUrl) + '" target="_blank" rel="noopener">Abrir la hoja de datos ↗</a></div>' +
+    '<p class="muted" style="font-size:12.5px;margin:0">Administran: quien despliega la app y el profesorado marcado como administración en «Profesorado».</p></section></div>';
+  let mats = d.materias.slice();
+  const gm = () => api('guardarAjustes', { materias: mats }).then(() => recargar('Materias guardadas')).catch(fallo);
+  c.querySelectorAll('[data-quita]').forEach(b => b.onclick = () => { if (mats.length < 2) return; mats = mats.filter(m => m !== b.dataset.quita); gm(); });
+  $('#nuevaMat').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) { mats.push(e.target.value.trim()); gm(); } };
+  $('#gCentro').onclick = () => api('guardarAjustes', { centro: $('#centro').value }).then(() => recargar('Guardado')).catch(fallo);
+  $('#sync').onclick = () => {
+    const b = $('#sync'); b.disabled = true; b.innerHTML = IC.sync + 'Sincronizando…';
+    api('sincronizarMadre', $('#madre').value).then(r => recargar('Sincronizado: ' + r.docentes + ' docentes, ' + r.grupos + ' grupos, ' + r.franjas + ' franjas de refuerzo'))
+      .catch(e => { fallo(e); b.disabled = false; b.innerHTML = IC.sync + 'Sincronizar ahora'; });
+  };
+  $('#diaria').onchange = e => api('activarSincroDiaria', e.target.checked).then(v => { S.d.sincroDiaria = v; toast(v ? 'Sincronización nocturna activada' : 'Sincronización nocturna desactivada'); }).catch(fallo);
+}
+
+/* ---------- Profesorado ---------- */
+function ajDocentes(c) {
+  const pinta = q => {
+    const qq = (q || '').toLowerCase();
+    const lista = S.d.docentes.filter(d => !qq || (d.nombre_completo + ' ' + d.nombre_corto + ' ' + d.email).toLowerCase().indexOf(qq) >= 0);
+    $('#dl').innerHTML = lista.map(d => {
+      const n = S.d.horarios.filter(h => h.docente_id === d.id).length;
+      return '<button class="row" data-d="' + esc(d.id) + '"><span class="ini">' + esc(iniciales(d.nombre_completo || d.nombre_corto)) + '</span><span class="grow"><b>' + esc(d.nombre_completo || d.nombre_corto) + (d.es_admin ? ' <span class="tag" style="--c:var(--mates)">admin</span>' : '') + '</b><small>' + esc(d.email || 'Sin email') + (d.sustituto ? ' · Sustituye: ' + esc(d.sustituto) : '') + ' · ' + n + (n === 1 ? ' franja' : ' franjas') + '</small></span>' + IC.right.replace('<svg', '<svg class="chev"') + '</button>';
+    }).join('') || '<p class="muted" style="padding:12px">Sin resultados.</p>';
+    c.querySelectorAll('[data-d]').forEach(b => b.onclick = () => editarDocente(S.idx.doc[b.dataset.d]));
+  };
+  c.innerHTML = '<section class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"><div class="search">' + IC.search + '<input class="input sm" id="dq" type="search" placeholder="Buscar docente"></div><button class="btn primary sm" id="dNew">' + IC.plus + 'Añadir</button></div><div class="list" id="dl"></div></section>';
+  $('#dq').oninput = e => pinta(e.target.value);
+  $('#dNew').onclick = () => editarDocente({});
+  pinta('');
+}
+function editarDocente(d) {
+  const inn = abrirHoja(cabHoja(d.id ? 'Editar docente' : 'Nuevo docente', d.origen === 'madre' ? 'Viene de la hoja madre: los cambios de nombre o email se pisan al sincronizar' : '') +
+    '<div class="grid2"><div><label class="lbl">Nombre completo</label><input class="input" id="dn" value="' + esc(d.nombre_completo || '') + '" autofocus></div><div><label class="lbl">Nombre corto</label><input class="input" id="dc" value="' + esc(d.nombre_corto || '') + '"></div>' +
+    '<div><label class="lbl">Email (para entrar)</label><input class="input" id="de" type="email" value="' + esc(d.email || '') + '" placeholder="usuario@g.educaand.es"></div><div></div>' +
+    '<div><label class="lbl">Sustituto/a</label><input class="input" id="ds" value="' + esc(d.sustituto || '') + '"></div><div><label class="lbl">Email del sustituto/a</label><input class="input" id="dse" type="email" value="' + esc(d.sustituto_email || '') + '"></div></div>' +
+    '<label class="switch" style="margin-top:8px"><span><b style="font-weight:600">Administración</b><br><small class="muted">Accede a Ajustes</small></span><input type="checkbox" id="da"' + (d.es_admin ? ' checked' : '') + '></label>' +
+    '<div class="sheet-foot">' + (d.id ? '<button class="btn danger" id="dDel" style="margin-right:auto">Eliminar</button>' : '') + '<button class="btn" onclick="cerrarHoja()">Cancelar</button><button class="btn primary" id="dOk">Guardar</button></div>');
+  $('#dOk', inn).onclick = () => api('guardarDocente', { id: d.id, nombre_completo: $('#dn').value, nombre_corto: $('#dc').value, email: $('#de').value, sustituto: $('#ds').value, sustituto_email: $('#dse').value, es_admin: $('#da').checked, activo: true })
+    .then(() => { cerrarHoja(); return recargar('Docente guardado'); }).catch(fallo);
+  const del = $('#dDel', inn);
+  if (del) del.onclick = async () => { if (!(await confirmar('Se eliminará el docente y sus franjas de refuerzo. Sus registros se conservan.', 'Eliminar'))) return; api('borrarDocente', d.id).then(() => recargar('Docente eliminado')).catch(fallo); };
+}
+
+/* ---------- Horarios ---------- */
+let ajDoc = '';
+function ajHorarios(c) {
+  const conHorario = new Set(S.d.horarios.map(h => h.docente_id));
+  if (!ajDoc) ajDoc = (S.d.docentes.find(d => conHorario.has(d.id)) || S.d.docentes[0] || {}).id || '';
+  if (!S.d.tramos.length) { c.innerHTML = '<div class="card empty"><p>Primero sincroniza la hoja madre o crea los tramos.</p></div>'; return; }
+  const opts = S.d.docentes.map(d => '<option value="' + esc(d.id) + '"' + (d.id === ajDoc ? ' selected' : '') + '>' + (conHorario.has(d.id) ? '● ' : '') + esc(d.nombre_completo || d.nombre_corto) + '</option>').join('');
+  let fr = S.d.horarios.filter(h => h.docente_id === ajDoc).map(h => Object.assign({}, h, { grupo_ids: gruposDeFranja(h) }));
+  const pinta = () => {
+    let g = '<span></span>' + DIAS.map(d => '<span class="h">' + DIA_CORTO[d] + '</span>').join('');
+    S.d.tramos.forEach(t => {
+      g += '<span class="t">' + esc(t.hora_inicio || '') + '<br>' + esc(t.hora_fin || t.etiqueta || '') + '</span>';
+      if (String(t.es_recreo) === 'true') { g += '<span class="rec" title="Recreo"></span>'; return; }
+      DIAS.forEach(d => {
+        const cs = fr.filter(f => f.dia === d && f.tramo_id === t.id);
+        g += '<button class="cell' + (cs.length ? ' on' : '') + '" data-d="' + d + '" data-t="' + esc(t.id) + '" aria-label="' + esc(DIA_LARGO[d] + ' ' + etiquetaTramo(t)) + '">' + cs.map(f => f.grupo_ids.map(id => '<span class="g">' + esc(nombreGrupo(id)) + '</span>').join('') + (f.semana ? '<span class="w">Sem ' + esc(f.semana) + '</span>' : '')).join('') + '</button>';
+      });
+    });
+    $('#sch').innerHTML = g;
+    c.querySelectorAll('.cell').forEach(b => b.onclick = () => editarCelda(b.dataset.d, b.dataset.t));
+  };
+  const editarCelda = (dia, tramo) => {
+    // Cada semana (todas / A / B) se edita por separado para no mezclar filas.
+    const actual = fr.filter(f => f.dia === dia && f.tramo_id === tramo);
+    let sem = actual[0] ? actual[0].semana || '' : '';
+    let sel = new Set();
+    const cargaSel = () => { sel = new Set(); actual.filter(f => (f.semana || '') === sem).forEach(f => f.grupo_ids.forEach(i => sel.add(i))); };
+    cargaSel();
+    const inn = abrirHoja(cabHoja(esc(DIA_LARGO[dia] + ' · ' + etiquetaTramo(S.idx.tramo[tramo])), 'Grupos que refuerza ' + esc(nombreDocId(ajDoc))) +
+      '<div class="pills" id="cg">' + S.d.grupos.map(g => '<button class="pill sm" data-g="' + esc(g.id) + '" aria-pressed="' + sel.has(g.id) + '"><span class="tick">' + IC.check + '</span>' + esc(g.nombre_corto) + '</button>').join('') + '</div>' +
+      '<div style="margin-top:16px"><span class="lbl">Semanas</span><div class="seg" id="cs">' + [['', 'Todas'], ['A', 'Solo A'], ['B', 'Solo B']].map(([k, t]) => '<button data-s="' + k + '" aria-pressed="' + (sem === k) + '">' + t + '</button>').join('') + '</div></div>' +
+      '<div class="sheet-foot"><button class="btn" id="cClear" style="margin-right:auto">Vaciar</button><button class="btn primary" id="cOk">Aplicar</button></div>');
+    inn.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { const id = b.dataset.g; sel.has(id) ? sel.delete(id) : sel.add(id); b.setAttribute('aria-pressed', sel.has(id)); });
+    inn.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+      sem = b.dataset.s; cargaSel();
+      inn.querySelectorAll('[data-s]').forEach(x => x.setAttribute('aria-pressed', x === b));
+      inn.querySelectorAll('[data-g]').forEach(x => x.setAttribute('aria-pressed', sel.has(x.dataset.g)));
+    });
+    const aplica = vaciar => {
+      fr = fr.filter(f => !(f.dia === dia && f.tramo_id === tramo && (vaciar || (f.semana || '') === sem)));
+      if (!vaciar && sel.size) fr.push({ dia, tramo_id: tramo, grupo_ids: Array.from(sel), semana: sem });
+      cerrarHoja(); pinta(); $('#hSave').disabled = false;
+    };
+    $('#cOk', inn).onclick = () => aplica(false);
+    $('#cClear', inn).onclick = () => aplica(true);
+  };
+  c.innerHTML = '<section class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px"><select class="select" id="hd" style="flex:1;min-width:200px">' + opts + '</select><button class="btn primary" id="hSave" disabled>Guardar horario</button></div>' +
+    '<p class="muted" style="font-size:13px;margin:0 0 12px">Toca una celda para indicar a qué grupo entra de refuerzo. ● = tiene franjas.</p><div class="sched" id="sch"></div></section>';
+  $('#hd').onchange = e => { ajDoc = e.target.value; ajHorarios(c); };
+  $('#hSave').onclick = () => api('guardarHorarioDocente', ajDoc, fr).then(() => recargar('Horario guardado')).catch(fallo);
+  pinta();
+}
+
+/* ---------- Alumnado ---------- */
+let ajGrupo = '';
+function ajAlumnado(c) {
+  if (!S.d.grupos.length) { c.innerHTML = '<div class="card empty"><p>Primero sincroniza la hoja madre o crea los grupos.</p></div>'; return; }
+  if (!ajGrupo || !S.idx.grupo[ajGrupo]) ajGrupo = S.d.grupos[0].id;
+  const cuenta = id => S.d.alumnado.filter(a => a.grupo_id === id && a.activo).length;
+  const lista = S.d.alumnado.filter(a => a.grupo_id === ajGrupo);
+  c.innerHTML = '<div class="pills" style="margin-bottom:14px">' + S.d.grupos.map(g => '<button class="pill sm" data-g="' + esc(g.id) + '" aria-pressed="' + (g.id === ajGrupo) + '">' + esc(g.nombre_corto) + ' <small>' + cuenta(g.id) + '</small></button>').join('') + '</div>' +
+    '<div class="grid2" style="align-items:start"><section class="card"><div class="field-label"><span>' + esc(nombreGrupo(ajGrupo)) + '</span><span class="hint">' + lista.filter(a => a.activo).length + ' en refuerzo</span></div><div class="list">' +
+    (lista.map(a => '<div class="row"><span class="ini">' + esc(iniciales(a.nombre)) + '</span><span class="grow"><b' + (a.activo ? '' : ' style="opacity:.5;text-decoration:line-through"') + '>' + esc(a.nombre) + '</b>' + (a.notas ? '<small>' + esc(a.notas) + '</small>' : '') + '</span><button class="btn icon sm" data-e="' + esc(a.id) + '" aria-label="Editar ' + esc(a.nombre) + '">' + IC.edit + '</button></div>').join('') || '<p class="muted" style="padding:8px 12px">Nadie todavía.</p>') +
+    '</div></section><section class="card stack"><h2 class="h2" style="font-size:19px">Añadir en bloque</h2><p class="muted" style="margin:0;font-size:13.5px">Un nombre por línea (puedes pegar desde Séneca u otra hoja).</p><textarea class="textarea" id="bulk" placeholder="Apellidos, Nombre&#10;Apellidos, Nombre"></textarea><button class="btn primary" id="bOk">Añadir a ' + esc(nombreGrupo(ajGrupo)) + '</button></section></div>';
+  c.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { ajGrupo = b.dataset.g; ajAlumnado(c); });
+  c.querySelectorAll('[data-e]').forEach(b => b.onclick = () => editarAlumno(S.idx.alu[b.dataset.e]));
+  $('#bOk').onclick = () => { const t = $('#bulk').value; if (!t.trim()) return; api('importarAlumnado', t, ajGrupo).then(n => recargar(n.length + ' añadidos')).catch(fallo); };
+}
+function editarAlumno(a) {
+  const opts = S.d.grupos.map(g => '<option value="' + esc(g.id) + '"' + (g.id === a.grupo_id ? ' selected' : '') + '>' + esc(g.nombre_corto) + '</option>').join('');
+  const inn = abrirHoja(cabHoja('Editar alumno/a') + '<div class="stack"><div><label class="lbl">Nombre</label><input class="input" id="an" value="' + esc(a.nombre) + '" autofocus></div><div><label class="lbl">Grupo</label><select class="select" id="ag">' + opts + '</select></div>' +
+    '<div><label class="lbl">Notas (visibles para el profesorado)</label><input class="input" id="ano" value="' + esc(a.notas || '') + '" placeholder="p. ej. Programa de refuerzo de lectura"></div>' +
+    '<label class="switch"><span><b style="font-weight:600">En refuerzo</b><br><small class="muted">Si lo desactivas deja de salir en las píldoras</small></span><input type="checkbox" id="aa"' + (a.activo ? ' checked' : '') + '></label></div>' +
+    '<div class="sheet-foot"><button class="btn danger" id="aDel" style="margin-right:auto">Eliminar</button><button class="btn" onclick="cerrarHoja()">Cancelar</button><button class="btn primary" id="aOk">Guardar</button></div>');
+  $('#aOk', inn).onclick = () => api('guardarAlumno', { id: a.id, nombre: $('#an').value, grupo_id: $('#ag').value, notas: $('#ano').value, activo: $('#aa').checked }).then(() => { cerrarHoja(); return recargar('Guardado'); }).catch(fallo);
+  $('#aDel', inn).onclick = async () => { if (!(await confirmar('Si tiene sesiones registradas se archivará en lugar de borrarse.', 'Eliminar'))) return; api('borrarAlumno', a.id).then(r => recargar(r === 'archivado' ? 'Archivado (tiene registros)' : 'Eliminado')).catch(fallo); };
+}
+
+/* ---------- Tramos y grupos (por si no hay hoja madre) ---------- */
+function ajEstructura(c) {
+  c.innerHTML = '<p class="muted" style="margin:0 0 14px;font-size:13.5px">' + (S.d.madreId ? 'Estos datos vienen de la hoja madre y se sustituyen al sincronizar.' : 'Si no usáis la hoja madre, crea aquí los tramos horarios y los grupos.') + '</p>' +
+    '<div class="grid2" style="align-items:start"><section class="card"><div class="field-label"><span>Tramos</span><button class="btn sm" id="tNew">' + IC.plus + 'Añadir</button></div><div class="list">' +
+    S.d.tramos.map(t => '<button class="row" data-t="' + esc(t.id) + '"><span class="grow"><b class="num">' + esc(etiquetaTramo(t)) + '</b><small>' + (String(t.es_recreo) === 'true' ? 'Recreo' : esc(t.etiqueta || '')) + '</small></span>' + IC.right.replace('<svg', '<svg class="chev"') + '</button>').join('') + '</div></section>' +
+    '<section class="card"><div class="field-label"><span>Grupos</span><button class="btn sm" id="gNew">' + IC.plus + 'Añadir</button></div><div class="list">' +
+    S.d.grupos.map(g => '<button class="row" data-g="' + esc(g.id) + '"><span class="ini">' + esc(g.nombre_corto.slice(0, 3)) + '</span><span class="grow"><b>' + esc(g.nombre_largo || g.nombre_corto) + '</b></span>' + IC.right.replace('<svg', '<svg class="chev"') + '</button>').join('') + '</div></section></div>';
+  const tramo = t => {
+    const inn = abrirHoja(cabHoja(t.id ? 'Editar tramo' : 'Nuevo tramo') + '<div class="grid2"><div><label class="lbl">Empieza</label><input class="input" type="time" id="ti" value="' + esc(t.hora_inicio || '') + '"></div><div><label class="lbl">Termina</label><input class="input" type="time" id="tf" value="' + esc(t.hora_fin || '') + '"></div><div><label class="lbl">Etiqueta</label><input class="input" id="te" value="' + esc(t.etiqueta || '') + '" placeholder="1ª sesión"></div><div><label class="lbl">Orden</label><input class="input" type="number" id="to" value="' + esc(t.orden || S.d.tramos.length + 1) + '"></div></div>' +
+      '<label class="switch"><span><b style="font-weight:600">Es recreo</b></span><input type="checkbox" id="tr"' + (String(t.es_recreo) === 'true' ? ' checked' : '') + '></label>' +
+      '<div class="sheet-foot">' + (t.id ? '<button class="btn danger" id="tDel" style="margin-right:auto">Eliminar</button>' : '') + '<button class="btn primary" id="tOk">Guardar</button></div>');
+    $('#tOk', inn).onclick = () => api('guardarTramo', { id: t.id || '', hora_inicio: $('#ti').value, hora_fin: $('#tf').value, etiqueta: $('#te').value, orden: $('#to').value, es_recreo: $('#tr').checked ? 'true' : 'false' }).then(() => { cerrarHoja(); return recargar('Tramo guardado'); }).catch(fallo);
+    const del = $('#tDel', inn); if (del) del.onclick = () => api('borrarTramo', t.id).then(() => { cerrarHoja(); return recargar('Tramo eliminado'); }).catch(fallo);
+  };
+  const grupo = g => {
+    const inn = abrirHoja(cabHoja(g.id ? 'Editar grupo' : 'Nuevo grupo') + '<div class="grid2"><div><label class="lbl">Nombre corto</label><input class="input" id="gc" value="' + esc(g.nombre_corto || '') + '" placeholder="3ºA" autofocus></div><div><label class="lbl">Nombre largo</label><input class="input" id="gl" value="' + esc(g.nombre_largo || '') + '" placeholder="3º de Primaria A"></div><div><label class="lbl">Orden</label><input class="input" type="number" id="go" value="' + esc(g.orden || S.d.grupos.length + 1) + '"></div></div>' +
+      '<div class="sheet-foot">' + (g.id ? '<button class="btn danger" id="gDel" style="margin-right:auto">Eliminar</button>' : '') + '<button class="btn primary" id="gOk">Guardar</button></div>');
+    $('#gOk', inn).onclick = () => api('guardarGrupo', { id: g.id || '', nombre_corto: $('#gc').value.trim(), nombre_largo: $('#gl').value.trim(), orden: $('#go').value }).then(() => { cerrarHoja(); return recargar('Grupo guardado'); }).catch(fallo);
+    const del = $('#gDel', inn); if (del) del.onclick = () => api('borrarGrupo', g.id).then(() => { cerrarHoja(); return recargar('Grupo eliminado'); }).catch(fallo);
+  };
+  $('#tNew').onclick = () => tramo({});
+  $('#gNew').onclick = () => grupo({});
+  c.querySelectorAll('[data-t]').forEach(b => b.onclick = () => tramo(S.idx.tramo[b.dataset.t]));
+  c.querySelectorAll('[data-g]').forEach(b => b.onclick = () => grupo(S.idx.grupo[b.dataset.g]));
+}
+</script>

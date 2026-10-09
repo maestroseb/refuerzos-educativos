@@ -1,0 +1,87 @@
+<script>
+/* =====================================================================
+   Vista DIARIO: todos los registros del centro (o solo los míos), con
+   filtros, búsqueda, detalle, edición/borrado y exportación a CSV.
+   ===================================================================== */
+let limiteDiario = 60;
+VISTAS.diario = function(el) {
+  limiteDiario = 60;
+  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Diario de sesiones</div><h1 class="h1">Lo que hemos <em>trabajado</em></h1></header><div id="fBar"></div><div id="dList"></div>';
+  const pintaBarra = () => { const fb = $('#fBar'); fb.innerHTML = ''; fb.appendChild(barraFiltros(full => { if (full) pintaBarra(); limiteDiario = 60; pintarDiario(); }, true)); };
+  pintaBarra();
+  pintarDiario();
+};
+
+function pintarDiario() {
+  const c = $('#dList');
+  const regs = filtrar(S.d.registros);
+  if (!regs.length) {
+    c.innerHTML = '<div class="empty">' + artVacio() + '<h2 class="h2">' + (S.d.registros.length ? 'Nada con estos filtros' : 'Aún no hay sesiones') + '</h2><p>' + (S.d.registros.length ? 'Prueba a ampliar el periodo o limpiar los filtros.' : 'Las sesiones que registréis aparecerán aquí.') + '</p></div>';
+    return;
+  }
+  const nAlu = new Set(); hechas(regs).forEach(r => aluIds(r).forEach(i => nAlu.add(i)));
+  const nNo = regs.length - hechas(regs).length;
+  let h = '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap"><span class="muted num" style="font-size:13.5px">' + regs.length + (regs.length === 1 ? ' sesión' : ' sesiones') + ' · ' + nAlu.size + ' alumnos/as' + (nNo ? ' · ' + nNo + ' no realizadas' : '') + '</span>' +
+    '<button class="btn sm" id="csv">' + IC.down + 'Exportar CSV</button></div>';
+  const porFecha = {};
+  const vis = regs.slice(0, limiteDiario);
+  vis.forEach(r => (porFecha[r.fecha] = porFecha[r.fecha] || []).push(r));
+  Object.keys(porFecha).sort().reverse().forEach(f => {
+    h += '<section class="daygroup"><h3>' + esc(fechaLarga(f)) + '<small>' + esc(relativa(f) !== fechaCorta(f) ? relativa(f) : '') + '</small></h3><div class="entries">' + porFecha[f].map(tarjetaRegistro).join('') + '</div></section>';
+  });
+  if (regs.length > limiteDiario) h += '<div style="text-align:center;margin-top:20px"><button class="btn" id="mas">Ver más (' + (regs.length - limiteDiario) + ')</button></div>';
+  c.innerHTML = h;
+  c.querySelectorAll('[data-reg]').forEach(b => b.onclick = () => detalleRegistro(b.dataset.reg));
+  $('#csv').onclick = () => exportarCSV(regs);
+  const m = $('#mas'); if (m) m.onclick = () => { limiteDiario += 100; pintarDiario(); };
+}
+
+function tarjetaRegistro(r) {
+  const t = S.idx.tramo[r.tramo_id];
+  if (noHecha(r)) return '<button class="entry no" data-reg="' + esc(r.id) + '"><div class="who">No realizada · ' + esc(r.motivo || '—') + '</div>' +
+    '<div class="meta"><span>' + esc(nombreGrupo(r.grupo_id)) + '</span><span class="num">' + esc(t ? t.hora_inicio : '') + '</span><span>' + esc(nombreDocId(r.docente_id)) + '</span>' + (aluIds(r).length ? '<span>' + esc(aluIds(r).map(nombreAlu).join(', ')) + '</span>' : '') + '</div>' +
+    (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</button>';
+  return '<button class="entry" data-reg="' + esc(r.id) + '" style="--c:' + colorMateria(r.materia) + '">' +
+    '<div class="who">' + esc(aluIds(r).map(nombreAlu).join(', ') || r.alumnos_txt) + '</div>' +
+    '<div class="meta"><span class="tag" style="--c:' + colorMateria(r.materia) + '">' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) +
+    '<span>' + esc(nombreGrupo(r.grupo_id)) + '</span><span class="num">' + esc(t ? t.hora_inicio : '') + '</span><span>' + esc(nombreDocId(r.docente_id)) + '</span></div>' +
+    (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</button>';
+}
+
+function detalleRegistro(id) {
+  const r = S.d.registros.find(x => x.id === id);
+  if (!r) return;
+  const t = S.idx.tramo[r.tramo_id];
+  const inn = abrirHoja(cabHoja(esc(fechaLarga(r.fecha)), esc(etiquetaTramo(t) + ' · ' + nombreGrupo(r.grupo_id) + ' · ' + nombreDocId(r.docente_id))) +
+    '<div class="stack"><div class="pills">' + aluIds(r).map(i => '<button class="pill sm" data-ficha="' + esc(i) + '">' + esc(nombreAlu(i)) + '</button>').join('') + '</div>' +
+    (noHecha(r) ? '<div class="banner warn">' + IC.info + '<span class="grow">Sesión no realizada · <b>' + esc(r.motivo) + '</b></span></div>' :
+    '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><span class="tag" style="--c:' + colorMateria(r.materia) + ';font-size:14px">' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) + '<span class="muted" style="font-size:13.5px">' + esc(NIVELES[+r.aprovechamiento] || 'Sin valorar') + '</span></div>') +
+    '<p style="white-space:pre-line;margin:0;font-size:16px;line-height:1.6">' + (r.trabajado ? esc(r.trabajado) : '<span class="muted">Sin descripción.</span>') + '</p>' +
+    '<p class="muted" style="font-size:12px;margin:0">Registrado ' + esc(String(r.creado || '').replace('T', ' ').slice(0, 16)) + (r.actualizado && r.actualizado !== r.creado ? ' · editado ' + esc(String(r.actualizado).replace('T', ' ').slice(0, 16)) : '') + '</p></div>' +
+    (puedoEditar(r) ? '<div class="sheet-foot"><button class="btn danger" id="del">Borrar</button><button class="btn primary" id="edit">' + IC.edit + 'Editar</button></div>' : ''));
+  inn.querySelectorAll('[data-ficha]').forEach(b => b.onclick = () => fichaAlumno(b.dataset.ficha));
+  const e = $('#edit', inn);
+  if (e) e.onclick = () => { cerrarHoja(); ir('registrar', { editar: r }); };
+  const d = $('#del', inn);
+  if (d) d.onclick = async () => {
+    if (!(await confirmar('Se borrará este registro de forma permanente.', 'Borrar'))) return;
+    api('borrarRegistro', r.id).then(() => {
+      S.d.registros = S.d.registros.filter(x => x.id !== r.id); indexar(); toast('Registro borrado');
+      if (S.view === 'diario') pintarDiario(); else ir(S.view, { keepScroll: true });
+    }).catch(fallo);
+  };
+}
+
+function exportarCSV(regs) {
+  const cab = ['Fecha', 'Día', 'Tramo', 'Docente', 'Grupo', 'Alumnado', 'Estado', 'Motivo', 'Materia', 'Aprovechamiento', 'Trabajado'];
+  // Comilla delante de = + - @ para que Excel/Sheets no lo ejecuten como fórmula.
+  const q = v => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+  const filas = regs.map(r => [r.fecha, DIA_LARGO[diaDe(r.fecha)] || '', etiquetaTramo(S.idx.tramo[r.tramo_id]), nombreDocId(r.docente_id), nombreGrupo(r.grupo_id), aluIds(r).map(nombreAlu).join(', '), noHecha(r) ? 'No realizada' : 'Realizada', r.motivo || '', r.materia, noHecha(r) ? '' : r.aprovechamiento, r.trabajado].map(q).join(';'));
+  const blob = new Blob(['﻿' + cab.map(q).join(';') + '\n' + filas.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'refuerzos-' + hoyIso() + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+</script>

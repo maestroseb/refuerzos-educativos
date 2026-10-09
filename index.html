@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F3EFE6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,50;1,9..144,300..700,50&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <?!= include('estilos'); ?>
+</head>
+<body>
+  <a class="skip" href="#main">Saltar al contenido</a>
+  <div class="app" id="app">
+    <aside class="rail" aria-label="Navegación principal">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6 25c4-9 9-14 20-18" /><circle cx="9" cy="10" r="3.2"/><circle cx="23" cy="22" r="3.2"/></svg></span>
+        <span class="brand-txt"><b>Refuerzos</b><small id="centroNombre">Diario de sesiones</small></span>
+      </div>
+      <nav class="nav" id="nav">
+        <button class="nav-i" data-view="registrar" aria-current="page"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Registrar</span></button>
+        <button class="nav-i" data-view="diario"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg><span>Diario</span></button>
+        <button class="nav-i" data-view="datos"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Datos</span></button>
+        <button class="nav-i" data-view="ajustes"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Ajustes</span></button>
+      </nav>
+      <button class="me" id="meBtn" aria-haspopup="dialog"><span class="avatar" id="meAvatar">·</span><span class="me-txt"><b id="meNombre">Cargando…</b><small id="meRol"></small></span></button>
+    </aside>
+    <main id="main" class="main" tabindex="-1">
+      <div class="boot" id="boot" aria-live="polite"><span class="boot-dot"></span><span class="boot-dot"></span><span class="boot-dot"></span></div>
+    </main>
+  </div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite" popover="manual"></div>
+  <dialog class="sheet" id="sheet"><div class="sheet-in" id="sheetIn"></div></dialog>
+  <?!= include('js_nucleo'); ?>
+  <?!= include('js_registrar'); ?>
+  <?!= include('js_diario'); ?>
+  <?!= include('js_datos'); ?>
+  <?!= include('js_ajustes'); ?>
+</body>
+</html>
