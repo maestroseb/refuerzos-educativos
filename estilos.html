@@ -340,6 +340,33 @@ svg { flex: none; }
 .view-reg { padding-bottom: 84px; }
 @media (min-width: 1180px) { .view-reg { padding-bottom: 0; } }
 
+/* Separación entre bloques de un formulario */
+.mt { margin-top: 20px; }
+
+/* Escritorio: Registrar más compacto en vertical (todo cabe de un vistazo,
+   también con muchos alumnos en un refuerzo conjunto). */
+@media (min-width: 1024px) {
+  .reg .card { padding: 18px 20px; }
+  .reg .mt { margin-top: 14px; }
+  .reg .field-label { margin-bottom: 8px; }
+  .reg .divider { margin: 16px -20px; }
+  .reg .day { padding: 6px 0 5px; border-radius: 13px; gap: 1px; }
+  .reg .day b { font-size: 18px; }
+  .reg .day .dot { margin-top: 1px; }
+  .reg .tramos { gap: 6px; padding-bottom: 2px; }
+  .reg .tramo { padding: 7px 11px; min-width: 84px; border-radius: 12px; }
+  .reg .ctx { padding: 10px 12px; gap: 12px; }
+  .reg .ctx-badge { width: 42px; height: 42px; border-radius: 12px; font-size: 16px; }
+  .reg .ctx b { font-size: 15px; }
+  .reg .pills { gap: 6px; }
+  .reg .pill { min-height: 36px; padding: 6px 13px; font-size: 14px; }
+  .reg .pill.mat { padding-left: 11px; }
+  .reg .star { width: 40px; height: 40px; }
+  .reg .star svg { width: 30px; height: 30px; }
+  .reg .textarea { min-height: 112px; }
+  .reg .seg-estado button { padding: 7px 12px; }
+}
+
 /* Registrar: rejilla */
 .reg { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 .reg > * { min-width: 0; }
