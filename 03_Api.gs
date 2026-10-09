@@ -51,10 +51,14 @@ function guardarRegistro(r) {
     const noRealizada = r.estado === 'no_realizada';
     if (noRealizada && !r.motivo) throw new Error('Indica por qué no se realizó.');
     if (!noRealizada && !ids.length) throw new Error('Selecciona al menos un alumno o alumna.');
+    // r.nuevo: alta con id generado en el navegador (guardado en segundo plano).
+    // Si el id ya existe es un reintento del mismo envío: se actualiza, sin duplicar.
+    if (r.nuevo && !/^[a-z0-9-]{6,40}$/i.test(String(r.id || ''))) throw new Error('Id no válido.');
+    let prev = null;
     if (r.id) {
-      const prev = filas_(HOJAS.REGISTROS).filter(function(x) { return x.id === r.id; })[0];
-      if (!prev) throw new Error('Ese registro ya no existe.');
-      if (prev.docente_id !== a.id && !a.yo.admin) throw new Error('Solo puedes editar tus propios registros.');
+      prev = filas_(HOJAS.REGISTROS).filter(function(x) { return x.id === r.id; })[0] || null;
+      if (!prev && !r.nuevo) throw new Error('Ese registro ya no existe.');
+      if (prev && prev.docente_id !== a.id && !a.yo.admin) throw new Error('Solo puedes editar tus propios registros.');
     }
     const alumnos = {};
     filas_(HOJAS.ALUMNADO).forEach(function(x) { alumnos[x.id] = x.nombre; });
@@ -78,7 +82,7 @@ function guardarRegistro(r) {
       email: a.yo.email,
       actualizado: ahora
     };
-    if (!r.id) fila.creado = ahora;
+    if (!prev) fila.creado = ahora;
     const g = guardar_(HOJAS.REGISTROS, fila);
     g.aprovechamiento = Number(g.aprovechamiento) || 0;
     return g;

@@ -44,7 +44,7 @@
     guardarAjustes: () => true, guardarDocente: d => d, guardarHorarioDocente: () => [], importarAlumnado: () => []
   };
   function runner(ok, ko) {
-    return new Proxy({}, { get: (_, k) => k === 'withSuccessHandler' ? f => runner(f, ko) : k === 'withFailureHandler' ? f => runner(ok, f) : (...a) => setTimeout(() => { try { ok && ok((handlers[k] || (() => null))(...a)); } catch (e) { ko && ko(e); } }, 120) });
+    return new Proxy({}, { get: (_, k) => k === 'withSuccessHandler' ? f => runner(f, ko) : k === 'withFailureHandler' ? f => runner(ok, f) : (...a) => setTimeout(() => { try { if (window.MOCK_FALLO_RED && k === 'guardarRegistro') throw new Error('NetworkError: Connection failure due to HTTP 0'); ok && ok((handlers[k] || (() => null))(...a)); } catch (e) { ko && ko(e); } }, k === 'guardarRegistro' ? 1500 : 120) });
   }
   window.google = { script: { run: runner() } };
 })();

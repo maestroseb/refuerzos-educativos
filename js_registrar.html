@@ -11,10 +11,20 @@ const SUGERENCIAS = {
 };
 S.f = null;
 
+/* Franjas de refuerzo de un docente en una fecha, UNA por tramo: si en el
+   mismo tramo hay varios grupos es un refuerzo conjunto (se juntan alumnos
+   de esos cursos), así que sus grupos se unen en una sola franja. */
 function franjasDe(docId, fecha) {
-  const dia = diaDe(fecha), sem = tipoSemana(fecha);
-  return S.d.horarios.filter(h => h.docente_id === docId && h.dia === dia && (!h.semana || !sem || h.semana === sem));
+  const dia = diaDe(fecha), sem = tipoSemana(fecha), porTramo = {};
+  S.d.horarios.filter(h => h.docente_id === docId && h.dia === dia && (!h.semana || !sem || h.semana === sem)).forEach(h => {
+    const f = porTramo[h.tramo_id] = porTramo[h.tramo_id] || Object.assign({}, h, { grupo_ids: '' });
+    f.grupo_ids = Array.from(new Set(gruposDeFranja(f).concat(gruposDeFranja(h)))).join(',');
+  });
+  return Object.values(porTramo);
 }
+/* Grupos de la sesión (registro o formulario): uno o varios, guardados como "g1,g2". */
+const gruposSel = x => String((x && x.grupo_id) || '').split(',').filter(Boolean);
+const enGrupos = (f, alu) => !!alu && gruposSel(f).indexOf(alu.grupo_id) >= 0;
 const gruposDeFranja = f => String(f.grupo_ids || '').split(',').filter(Boolean);
 const registrosDe = (docId, fecha, tramo) => S.d.registros.filter(r => r.docente_id === docId && r.fecha === fecha && (!tramo || r.tramo_id === tramo));
 
@@ -47,7 +57,7 @@ function tramoPorDefecto(fecha) {
 }
 function grupoPorDefecto(fecha, tramo) {
   const f = franjasDe(S.actor, fecha).find(x => x.tramo_id === tramo);
-  if (f) return gruposDeFranja(f)[0] || '';
+  if (f) return gruposDeFranja(f).join(',');
   const prev = S.d.registros.find(r => r.docente_id === S.actor && r.tramo_id === tramo && diaDe(r.fecha) === diaDe(fecha));
   return prev ? prev.grupo_id : '';
 }
@@ -61,7 +71,7 @@ function nuevoForm(fecha, tramo) {
   const b = LS.get('borrador', null);
   if (b && b.actor === S.actor && b.fecha === fecha && b.tramo_id === tramo && !b.id) Object.assign(f, b, { cambiarGrupo: false });
   else if (f.sugeridos) f.alumnos = f.sugeridos.slice();
-  f.extra = f.alumnos.filter(i => S.idx.alu[i] && S.idx.alu[i].grupo_id !== f.grupo_id);
+  f.extra = f.alumnos.filter(i => S.idx.alu[i] && !enGrupos(f, S.idx.alu[i]));
   // Si la hoja madre dice que en esa franja estaba sustituyendo, se propone "no realizada".
   f.sust = sustitucionEn(S.actor, fecha, tramo) || null;
   if (f.sust && !registrosDe(S.actor, fecha, tramo).length && !(b && b.actor === S.actor && b.fecha === fecha && b.tramo_id === tramo && b.estado)) {
@@ -125,7 +135,7 @@ function agendaHoy(fecha, franjas) {
 
 function cargarEdicion(r) {
   S.f = { id: r.id, fecha: r.fecha, tramo_id: r.tramo_id, grupo_id: r.grupo_id, alumnos: aluIds(r), extra: [], materia: r.materia, trabajado: r.trabajado, estrellas: +r.aprovechamiento || 0, docente_id: r.docente_id, _actor: S.actor, estado: noHecha(r) ? 'no_realizada' : 'realizada', motivo: r.motivo || '' };
-  S.f.extra = S.f.alumnos.filter(i => !S.idx.alu[i] || S.idx.alu[i].grupo_id !== r.grupo_id);
+  S.f.extra = S.f.alumnos.filter(i => !S.idx.alu[i] || !enGrupos(r, S.idx.alu[i]));
 }
 
 /* ---------- Tarjeta izquierda: cuándo y con quién ---------- */
@@ -151,16 +161,20 @@ function pintarSesion() {
       '<b>' + esc(t.hora_inicio || t.etiqueta) + (hecho ? (registrosDe(S.actor, f.fecha, t.id).every(noHecha) ? ' <span aria-hidden="true" class="muted">–</span>' : ' <span aria-hidden="true" style="color:var(--ok)">✓</span>') : '') + '</b><small>' + esc(sub) + '</small></button>';
   }).join('');
   const fr = franjas.find(x => x.tramo_id === f.tramo_id);
-  const gruposFr = fr ? gruposDeFranja(fr) : [];
-  const g = S.idx.grupo[f.grupo_id], t = S.idx.tramo[f.tramo_id];
-  const ctx = '<div class="ctx"><div class="ctx-badge" aria-hidden="true">' + esc(g ? g.nombre_corto.replace(/\s+/g, '').slice(0, 4) : '?') + '</div><div class="grow"><b>' +
-    (g ? 'Refuerzo en ' + esc(g.nombre_largo || g.nombre_corto) : 'Elige el grupo') + '</b><small>' + esc(DIA_LARGO[diaDe(f.fecha)] || '') + ' · ' + esc(etiquetaTramo(t)) + (fr ? '' : ' · fuera de tu horario') + '</small></div>' +
+  const sel = gruposSel(f).filter(id => S.idx.grupo[id]), t = S.idx.tramo[f.tramo_id];
+  const g = S.idx.grupo[sel[0]], conjunto = sel.length > 1;
+  const badge = !g ? '?' : g.nombre_corto.replace(/\s+/g, '').slice(0, 4) + (conjunto ? '<sup>+' + (sel.length - 1) + '</sup>' : '');
+  const lista = arr => arr.length > 1 ? arr.slice(0, -1).join(', ') + ' y ' + arr[arr.length - 1] : arr.join('');
+  const ctx = '<div class="ctx"><div class="ctx-badge" aria-hidden="true">' + badge + '</div><div class="grow"><b>' +
+    (!g ? 'Elige el grupo' : conjunto ? 'Refuerzo conjunto · ' + esc(lista(sel.map(nombreGrupo))) : 'Refuerzo en ' + esc(g.nombre_largo || g.nombre_corto)) + '</b><small>' + esc(DIA_LARGO[diaDe(f.fecha)] || '') + ' · ' + esc(etiquetaTramo(t)) + (fr ? '' : ' · fuera de tu horario') + '</small></div>' +
     '<button class="btn sm" id="cambiaGrupo" aria-expanded="' + !!f.cambiarGrupo + '">' + (f.cambiarGrupo ? 'Listo' : 'Cambiar') + '</button></div>';
-  const listaGrupos = (f.cambiarGrupo || !g) ? '<div class="pills" style="margin-top:12px">' + S.d.grupos.map(x => '<button class="pill sm" data-grupo="' + esc(x.id) + '" aria-pressed="' + (x.id === f.grupo_id) + '">' + esc(x.nombre_corto) + '</button>').join('') + '</div>' :
-    (gruposFr.length > 1 ? '<div class="pills" style="margin-top:12px">' + gruposFr.map(id => '<button class="pill sm" data-grupo="' + esc(id) + '" aria-pressed="' + (id === f.grupo_id) + '">' + esc(nombreGrupo(id)) + '</button>').join('') + '</div>' : '');
-  const alus = S.d.alumnado.filter(a => a.activo && a.grupo_id === f.grupo_id);
+  // Al cambiar se pueden marcar varios grupos (refuerzo conjunto).
+  const listaGrupos = (f.cambiarGrupo || !g) ? '<p class="muted" style="font-size:12.5px;margin:12px 0 6px">Marca uno o varios grupos (refuerzo conjunto).</p><div class="pills">' +
+    S.d.grupos.map(x => '<button class="pill sm" data-grupo="' + esc(x.id) + '" aria-pressed="' + (sel.indexOf(x.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(x.nombre_corto) + '</button>').join('') + '</div>' : '';
+  const alus = S.d.alumnado.filter(a => a.activo && sel.indexOf(a.grupo_id) >= 0)
+    .sort((a, b) => sel.indexOf(a.grupo_id) - sel.indexOf(b.grupo_id) || a.nombre.localeCompare(b.nombre, 'es'));
   const extra = f.extra.filter(i => !alus.some(a => a.id === i));
-  const pill = (a, ex) => '<button class="pill' + (ex ? ' extra' : '') + '" data-alu="' + esc(a.id) + '" aria-pressed="' + (f.alumnos.indexOf(a.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(a.nombre) + (ex ? ' <small>' + esc(nombreGrupo(a.grupo_id)) + '</small>' : '') + '</button>';
+  const pill = (a, ex) => '<button class="pill' + (ex ? ' extra' : '') + '" data-alu="' + esc(a.id) + '" aria-pressed="' + (f.alumnos.indexOf(a.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(a.nombre) + (ex || conjunto ? ' <small>' + esc(nombreGrupo(a.grupo_id)) + '</small>' : '') + '</button>';
   const pills = alus.map(a => pill(a, false)).join('') + extra.map(i => S.idx.alu[i] ? pill(S.idx.alu[i], true) : '').join('');
   c.innerHTML =
     '<div class="field-label"><span>Día</span><button class="linkbtn hint" id="otraFecha">' + (f.fecha === hoy ? 'Otra fecha' : relativa(f.fecha) + ' · cambiar') + '</button></div>' +
@@ -185,7 +199,13 @@ function pintarSesion() {
   $('#otraFecha').onclick = () => { try { fi.showPicker(); } catch (e) { fi.classList.remove('sr'); fi.classList.add('input'); fi.focus(); } };
   fi.onchange = () => { if (fi.value) { const w = deIso(fi.value).getDay(); if (w === 0 || w === 6) return toast('Elige un día lectivo (lunes a viernes)', 'err'); cambiarFecha(fi.value); } };
   c.querySelectorAll('[data-tramo]').forEach(b => b.onclick = () => cambiarTramo(b.dataset.tramo));
-  c.querySelectorAll('[data-grupo]').forEach(b => b.onclick = () => { S.f.grupo_id = b.dataset.grupo; S.f.cambiarGrupo = false; pintarSesion(); pintarSavebar(); guardarBorrador(); });
+  c.querySelectorAll('[data-grupo]').forEach(b => b.onclick = () => {
+    const s = gruposSel(S.f), id = b.dataset.grupo, i = s.indexOf(id);
+    if (i >= 0) s.splice(i, 1); else s.push(id);
+    S.f.grupo_id = s.join(',');
+    S.f.extra = S.f.alumnos.filter(x => S.idx.alu[x] && !enGrupos(S.f, S.idx.alu[x]));
+    pintarSesion(); pintarHist(); pintarSavebar(); guardarBorrador();
+  });
   $('#cambiaGrupo').onclick = () => { S.f.cambiarGrupo = !S.f.cambiarGrupo; pintarSesion(); };
   c.querySelectorAll('[data-alu]').forEach(b => b.onclick = () => {
     const id = b.dataset.alu, i = S.f.alumnos.indexOf(id);
@@ -196,8 +216,8 @@ function pintarSesion() {
   });
   $('#addAlu').onclick = hojaAnadirAlumno;
   $$('[data-ag]').forEach(b => b.toggleAttribute('aria-current', b.dataset.ag === f.tramo_id && b.dataset.agf === f.fecha));
-  const sel = c.querySelector('.tramo[aria-pressed="true"]');
-  if (sel) requestAnimationFrame(() => { const tc = $('#tramos'); if (tc) tc.scrollLeft = Math.max(0, sel.offsetLeft - tc.offsetLeft - 40); });
+  const tSel = c.querySelector('.tramo[aria-pressed="true"]');
+  if (tSel) requestAnimationFrame(() => { const tc = $('#tramos'); if (tc) tc.scrollLeft = Math.max(0, tSel.offsetLeft - tc.offsetLeft - 40); });
 }
 const resumenAlu = () => S.f.alumnos.length ? S.f.alumnos.length + (S.f.alumnos.length === 1 ? ' seleccionado' : ' seleccionados') : 'Toca para seleccionar';
 
@@ -296,7 +316,7 @@ function insertarTexto(s) {
 function pintarHist() {
   const c = $('#cHist');
   if (!c) return;
-  const ids = S.f.alumnos.length ? S.f.alumnos : S.d.alumnado.filter(a => a.grupo_id === S.f.grupo_id).map(a => a.id);
+  const ids = S.f.alumnos.length ? S.f.alumnos : S.d.alumnado.filter(a => enGrupos(S.f, a)).map(a => a.id);
   const regs = S.d.registros.filter(r => r.id !== S.f.id && !noHecha(r) && aluIds(r).some(i => ids.indexOf(i) >= 0)).slice(0, 4);
   if (!regs.length) { c.hidden = true; return; }
   c.hidden = false;
@@ -304,7 +324,7 @@ function pintarHist() {
     '<div class="hist-i" style="--c:' + colorMateria(r.materia) + '"><span class="bar"></span><div><div class="meta"><b style="color:var(--ink);font-weight:600">' + esc(relativa(r.fecha)) + '</b><span>' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) + '<span>' + esc(nombreDocId(r.docente_id)) + '</span></div>' +
     '<div class="meta">' + esc(aluIds(r).map(nombreAlu).join(', ')) + '</div>' + (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</div></div>').join('') + '</div>';
   $('#verHist').onclick = () => {
-    if (S.f.alumnos.length === 1) { F.alumno = S.f.alumnos[0]; F.grupo = ''; } else { F.grupo = S.f.grupo_id; F.alumno = ''; }
+    if (S.f.alumnos.length === 1) { F.alumno = S.f.alumnos[0]; F.grupo = ''; } else { F.grupo = gruposSel(S.f).length === 1 ? S.f.grupo_id : ''; F.alumno = ''; }
     F.quien = 'todos'; guardaF(); ir('diario');
   };
 }
@@ -337,27 +357,36 @@ function pintarSavebar() {
   if (!sb) return;
   const no = f.estado === 'no_realizada';
   const falta = no ? (!f.motivo ? 'Indica el motivo' : '') : !f.alumnos.length ? 'Selecciona alumnado' : !f.materia ? 'Elige la materia' : !f.estrellas ? 'Valora el aprovechamiento' : '';
+  // La barra solo aparece cuando ya hay algo escrito (o, si no se realizó, con el motivo elegido).
+  const visible = !!f.id || (no ? !!f.motivo : !!String(f.trabajado || '').trim());
+  if (!visible) { sb.hidden = true; return; }
+  if (sb.hidden) { sb.hidden = false; sb.classList.remove('entra'); void sb.offsetWidth; sb.classList.add('entra'); }
   const t = S.idx.tramo[f.tramo_id];
   sb.innerHTML = '<div class="sum"><b>' + esc(no ? 'Sesión no realizada' : f.alumnos.length ? f.alumnos.map(i => primerNombre(nombreAlu(i))).join(', ') : 'Nueva sesión') + '</b><span>' + esc(falta || (relativa(f.fecha) + ' · ' + (t ? t.hora_inicio : '') + ' · ' + (no ? f.motivo : f.materia))) + '</span></div>' +
     '<button class="btn" id="guardar"' + (falta ? ' disabled' : '') + '>' + (f.id ? 'Actualizar' : 'Guardar') + '</button>';
   $('#guardar').onclick = guardarSesion;
 }
 
+/* Guardado optimista: la sesión aparece ya como registrada, el formulario
+   queda libre para la siguiente y el envío a la hoja sigue en segundo plano
+   (cola en js_nucleo, que reintenta si falla la conexión). */
 function guardarSesion() {
-  const f = S.f, btn = $('#guardar');
-  btn.classList.add('saving'); btn.textContent = 'Guardando…';
-  api('guardarRegistro', { id: f.id, fecha: f.fecha, tramo_id: f.tramo_id, grupo_id: f.grupo_id, alumno_ids: f.alumnos, materia: f.materia, trabajado: f.trabajado.trim(), aprovechamiento: f.estrellas, docente_id: f.docente_id || S.actor, estado: f.estado, motivo: f.motivo })
-    .then(r => {
-      const i = S.d.registros.findIndex(x => x.id === r.id);
-      if (i >= 0) S.d.registros[i] = r; else S.d.registros.push(r);
-      indexar();
-      LS.set('borrador', null);
-      sello(f.id ? 'Actualizado' : f.estado === 'no_realizada' ? 'Anotado' : '¡Registrado!');
-      S.f = nuevoForm(f.fecha, f.tramo_id); S.f._actor = S.actor;
-      S.f.alumnos = []; S.f.extra = [];
-      ir('registrar', { keepScroll: true });
-    })
-    .catch(e => { fallo(e); pintarSavebar(); });
+  const f = S.f;
+  const prev = f.id ? S.d.registros.find(x => x.id === f.id) : null;
+  const p = { id: f.id || nuevoIdLocal(), nuevo: !f.id || !!(prev && prev._pend), fecha: f.fecha, tramo_id: f.tramo_id, grupo_id: f.grupo_id,
+    alumno_ids: f.alumnos.slice(), materia: f.estado === 'no_realizada' ? '' : f.materia, trabajado: f.trabajado.trim(),
+    aprovechamiento: f.estado === 'no_realizada' ? 0 : f.estrellas, docente_id: f.docente_id || S.actor, estado: f.estado, motivo: f.estado === 'no_realizada' ? f.motivo : '' };
+  const local = Object.assign({}, prev || {}, p, { alumno_ids: p.alumno_ids.join(','), dia: diaDe(p.fecha), creado: prev ? prev.creado : ahoraIsoLocal(), _pend: true });
+  delete local.nuevo;
+  const i = S.d.registros.findIndex(x => x.id === p.id);
+  if (i >= 0) S.d.registros[i] = local; else S.d.registros.push(local);
+  indexar();
+  encolar(p, prev);
+  LS.set('borrador', null);
+  sello(f.id ? 'Actualizado' : f.estado === 'no_realizada' ? 'Anotado' : '¡Registrado!');
+  S.f = nuevoForm(f.fecha, f.tramo_id); S.f._actor = S.actor;
+  S.f.alumnos = []; S.f.extra = [];
+  ir('registrar', { keepScroll: true });
 }
 
 /* ---------- Añadir alumno que no sale por defecto ---------- */
@@ -382,7 +411,7 @@ function hojaAnadirAlumno() {
       }).join('');
     });
     if (q) {
-      const opts = S.d.grupos.map(g => '<option value="' + esc(g.id) + '"' + (g.id === S.f.grupo_id ? ' selected' : '') + '>' + esc(g.nombre_corto) + '</option>').join('');
+      const opts = S.d.grupos.map(g => '<option value="' + esc(g.id) + '"' + (g.id === gruposSel(S.f)[0] ? ' selected' : '') + '>' + esc(g.nombre_corto) + '</option>').join('');
       h += '<div class="card" style="margin-top:14px;background:var(--surface-2)"><b style="display:block;margin-bottom:10px">Dar de alta «' + esc(inp.value.trim()) + '»</b><div style="display:flex;gap:8px;flex-wrap:wrap"><select class="select sm" id="nuevoGrupo" style="flex:1;min-width:120px">' + opts + '</select><button class="btn primary sm" id="crearAlu">' + IC.plus + 'Crear y añadir</button></div></div>';
     } else if (!lista.length) h = '<p class="muted">Escribe un nombre para darlo de alta.</p>';
     res.innerHTML = h;
@@ -401,7 +430,7 @@ function hojaAnadirAlumno() {
 function anadirExtra(id) {
   if (S.f.alumnos.indexOf(id) < 0) S.f.alumnos.push(id);
   const a = S.idx.alu[id];
-  if (a && a.grupo_id !== S.f.grupo_id && S.f.extra.indexOf(id) < 0) S.f.extra.push(id);
+  if (a && !enGrupos(S.f, a) && S.f.extra.indexOf(id) < 0) S.f.extra.push(id);
   pintarSesion(); pintarHist(); pintarSavebar(); guardarBorrador();
 }
 

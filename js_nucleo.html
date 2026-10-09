@@ -87,7 +87,8 @@ function ordenTramo(id) { const t = S.idx.tramo && S.idx.tramo[id]; return t ? m
 const tramosLectivos = () => S.d.tramos.filter(t => String(t.es_recreo) !== 'true');
 const nombreDoc = d => d ? (d.nombre_corto || d.nombre_completo || '¿?') : '¿?';
 const nombreDocId = id => S.idx.doc[id] ? nombreDoc(S.idx.doc[id]) : (id ? 'Docente' : '—');
-const nombreGrupo = id => S.idx.grupo[id] ? S.idx.grupo[id].nombre_corto : (id ? '¿?' : 'Sin grupo');
+/* Acepta un grupo o varios ("g1,g2", refuerzo conjunto): "3ºA + 3ºB". */
+const nombreGrupo = id => !id ? 'Sin grupo' : String(id).split(',').filter(Boolean).map(x => S.idx.grupo[x] ? S.idx.grupo[x].nombre_corto : '¿?').join(' + ');
 const nombreAlu = id => S.idx.alu[id] ? S.idx.alu[id].nombre : 'Alumno/a eliminado';
 const etiquetaTramo = t => t ? (t.hora_inicio ? t.hora_inicio + '–' + t.hora_fin : (t.etiqueta || 'Tramo')) : '—';
 const iniciales = s => String(s || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -135,15 +136,21 @@ function cabeceraMovil() {
 }
 
 /* ---------- Avisos ---------- */
-function toast(msg, tipo) {
+function toast(msg, tipo, accion) {
   const t = document.createElement('div');
   t.className = 'toast' + (tipo === 'err' ? ' err' : '');
   t.innerHTML = (tipo === 'err' ? IC.info : IC.check) + '<span>' + esc(msg) + '</span>';
+  if (accion) {
+    const b = document.createElement('button');
+    b.className = 'toast-acc'; b.textContent = accion.txt;
+    b.onclick = () => { accion.fn(); t.remove(); };
+    t.appendChild(b);
+  }
   const box = $('#toasts');
   box.appendChild(t);
   // Como "popover", el aviso queda por encima de las hojas modales abiertas.
   if (box.showPopover) try { if (box.matches(':popover-open')) box.hidePopover(); box.showPopover(); } catch (e) {}
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, tipo === 'err' ? 5200 : 2600);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, accion ? 12000 : tipo === 'err' ? 5200 : 2600);
 }
 function sello(txt) {
   const s = document.createElement('div');
@@ -245,7 +252,7 @@ function filtrar(regs) {
     if (r.fecha < a || r.fecha > b) return false;
     if (F.quien === 'mios' && r.docente_id !== S.actor) return false;
     if (F.docente && r.docente_id !== F.docente) return false;
-    if (F.grupo && r.grupo_id !== F.grupo && !aluIds(r).some(i => S.idx.alu[i] && S.idx.alu[i].grupo_id === F.grupo)) return false;
+    if (F.grupo && String(r.grupo_id).split(',').indexOf(F.grupo) < 0 && !aluIds(r).some(i => S.idx.alu[i] && S.idx.alu[i].grupo_id === F.grupo)) return false;
     if (F.alumno && aluIds(r).indexOf(F.alumno) < 0) return false;
     if (F.materia && r.materia !== F.materia) return false;
     if (F.estado === 'no' && !noHecha(r)) return false;
@@ -284,11 +291,80 @@ function barraFiltros(onChange, conBusqueda) {
 const hayFiltros = () => F.quien !== 'todos' || F.rango !== 'curso' || F.grupo || F.alumno || F.docente || F.materia || F.estado || F.q;
 const guardaF = () => LS.set('filtros', F);
 
+/* ---------- Cola de guardado en segundo plano ---------- */
+const COLA = { items: LS.get('cola', []), activa: false, espera: false };
+const nuevoIdLocal = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const ahoraIsoLocal = () => { const d = new Date(); return iso(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+const esErrorRed = e => /network|http 0|timeout|failed to fetch|conexi/i.test(String(e && e.message || e));
+function encolar(p, prev) {
+  COLA.items.push({ p: p, prev: prev ? Object.assign({}, prev) : null });
+  LS.set('cola', COLA.items);
+  pintarCola();
+  procesarCola();
+}
+function procesarCola() {
+  if (COLA.activa || COLA.espera || !COLA.items.length) return pintarCola();
+  COLA.activa = true; pintarCola();
+  const it = COLA.items[0];
+  api('guardarRegistro', it.p).then(r => {
+    COLA.items.shift(); LS.set('cola', COLA.items);
+    // Si hay otra edición del mismo registro en cola, sigue marcado como pendiente.
+    if (COLA.items.some(x => x.p.id === r.id)) r._pend = true;
+    const i = S.d.registros.findIndex(x => x.id === r.id);
+    if (i >= 0) S.d.registros[i] = r; else S.d.registros.push(r);
+    indexar(); refrescarVista();
+    COLA.activa = false; procesarCola();
+  }).catch(e => {
+    COLA.activa = false;
+    if (esErrorRed(e)) {
+      // Sin conexión: se reintenta sola, sin perder nada (la cola está en el navegador).
+      COLA.espera = true; pintarCola();
+      setTimeout(() => { COLA.espera = false; procesarCola(); }, 10000);
+      return;
+    }
+    COLA.items.shift(); LS.set('cola', COLA.items);
+    if (it.prev) { const i = S.d.registros.findIndex(x => x.id === it.p.id); if (i >= 0) S.d.registros[i] = it.prev; }
+    else S.d.registros = S.d.registros.filter(x => x.id !== it.p.id);
+    indexar(); refrescarVista();
+    LS.set('fallido', it.p);
+    toast('No se guardó la sesión del ' + fechaCorta(it.p.fecha) + ': ' + (e.message || e), 'err', { txt: 'Recuperar', fn: recuperarFallido });
+    procesarCola();
+  });
+}
+function recuperarFallido() {
+  const p = LS.get('fallido', null);
+  if (!p) return;
+  LS.set('fallido', null);
+  ir('registrar', { editar: Object.assign({}, p, { id: p.nuevo ? '' : p.id, alumno_ids: p.alumno_ids.join(',') }) });
+}
+function pintarCola() {
+  let el = $('#cola');
+  const n = COLA.items.length;
+  if (!n) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'cola'; el.className = 'cola'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  el.classList.toggle('off', COLA.espera);
+  el.innerHTML = '<span class="cola-spin" aria-hidden="true"></span>' + (COLA.espera ? 'Sin conexión · ' + n + ' pendiente' + (n > 1 ? 's' : '') + ', reintentando…' : 'Guardando' + (n > 1 ? ' ' + n + ' sesiones' : '') + '…');
+}
+/* Repinta lo que depende de los registros sin tocar lo que se está escribiendo. */
+function refrescarVista() {
+  if (S.view === 'registrar' && $('#cSesion')) { pintarSesion(); pintarBanner(); }
+  else if (S.view === 'diario' && $('#dList')) pintarDiario();
+}
+window.addEventListener('beforeunload', e => { if (COLA.items.length) { e.preventDefault(); e.returnValue = ''; } });
+
 /* ---------- Arranque ---------- */
 function arrancar() {
   api('inicio').then(d => {
     S.d = d;
+    // Lo que quedó en cola (p. ej. se cerró la pestaña sin conexión) se muestra y se reenvía.
+    COLA.items.forEach(it => {
+      const p = it.p, i = d.registros.findIndex(x => x.id === p.id);
+      const local = Object.assign({}, i >= 0 ? d.registros[i] : {}, p, { alumno_ids: p.alumno_ids.join(','), dia: diaDe(p.fecha), _pend: true });
+      delete local.nuevo;
+      if (i >= 0) d.registros[i] = local; else d.registros.push(local);
+    });
     indexar();
+    setTimeout(procesarCola, 300);
     S.actor = d.yo.docenteId || ((d.yo.elegible || d.yo.admin) ? LS.get('actor', '') : '');
     if (S.actor && !S.idx.doc[S.actor]) S.actor = d.yo.docenteId || '';
     pintarYo();

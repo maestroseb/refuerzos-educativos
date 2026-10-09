@@ -1,0 +1,30 @@
+// Prueba del refuerzo conjunto: un tramo con dos grupos muestra el alumnado de ambos y guarda un único registro.
+const path = require('path');
+const { chromium } = require('playwright');
+const OUT = path.join(__dirname, 'out');
+(async () => {
+  const b = await chromium.launch();
+  const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.clock.setFixedTime(new Date('2026-10-08T11:20:00+02:00'));
+  await p.goto('file://' + path.join(OUT, 'index.html'));
+  await p.evaluate(() => localStorage.clear()); await p.reload();
+  await p.addStyleTag({ content: '*,*::before,*::after{animation:none!important}' });
+  await p.waitForSelector('#cSesion .pill');
+  await p.click('.tramo[data-tramo="t3"]'); await p.waitForTimeout(200);
+  console.log('Contexto:', (await p.textContent('.ctx b')).trim());
+  console.log('Grupos en píldoras:', [...new Set(await p.$$eval('#cSesion [data-alu] small', e => e.map(x => x.textContent)))]);
+  await p.screenshot({ path: path.join(OUT, 'j1-conjunto.png'), fullPage: true });
+  const al = await p.$$('#cSesion [data-alu]');
+  await al[0].click(); await al[al.length - 1].click();
+  await p.click('[data-mat="Matemáticas"]'); await p.fill('#trab', 'Refuerzo conjunto'); await p.click('[data-star="4"]');
+  await p.click('#guardar'); await p.waitForTimeout(1800);
+  console.log('Registro guardado grupo_id:', await p.evaluate(() => S.d.registros.find(r => r.trabajado === 'Refuerzo conjunto').grupo_id));
+  await p.click('[data-view="diario"]'); await p.waitForTimeout(300);
+  console.log('Diario:', (await p.textContent('.entry .meta')).trim().slice(0, 60));
+  await p.click('[data-view="registrar"]'); await p.click('.tramo[data-tramo="t1"]'); await p.click('#cambiaGrupo');
+  await p.click('[data-grupo="g0"]'); await p.waitForTimeout(100);
+  console.log('Tras añadir 1ºA:', (await p.textContent('.ctx b')).trim());
+  await b.close();
+  console.log(errs.length ? 'ERRORES: ' + errs.join(' | ') : 'Sin errores JS');
+})();
