@@ -87,7 +87,8 @@ function ordenTramo(id) { const t = S.idx.tramo && S.idx.tramo[id]; return t ? m
 const tramosLectivos = () => S.d.tramos.filter(t => String(t.es_recreo) !== 'true');
 const nombreDoc = d => d ? (d.nombre_corto || d.nombre_completo || '¿?') : '¿?';
 const nombreDocId = id => S.idx.doc[id] ? nombreDoc(S.idx.doc[id]) : (id ? 'Docente' : '—');
-const nombreGrupo = id => S.idx.grupo[id] ? S.idx.grupo[id].nombre_corto : (id ? '¿?' : 'Sin grupo');
+/* Acepta un grupo o varios ("g1,g2", refuerzo conjunto): "3ºA + 3ºB". */
+const nombreGrupo = id => !id ? 'Sin grupo' : String(id).split(',').filter(Boolean).map(x => S.idx.grupo[x] ? S.idx.grupo[x].nombre_corto : '¿?').join(' + ');
 const nombreAlu = id => S.idx.alu[id] ? S.idx.alu[id].nombre : 'Alumno/a eliminado';
 const etiquetaTramo = t => t ? (t.hora_inicio ? t.hora_inicio + '–' + t.hora_fin : (t.etiqueta || 'Tramo')) : '—';
 const iniciales = s => String(s || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -251,7 +252,7 @@ function filtrar(regs) {
     if (r.fecha < a || r.fecha > b) return false;
     if (F.quien === 'mios' && r.docente_id !== S.actor) return false;
     if (F.docente && r.docente_id !== F.docente) return false;
-    if (F.grupo && r.grupo_id !== F.grupo && !aluIds(r).some(i => S.idx.alu[i] && S.idx.alu[i].grupo_id === F.grupo)) return false;
+    if (F.grupo && String(r.grupo_id).split(',').indexOf(F.grupo) < 0 && !aluIds(r).some(i => S.idx.alu[i] && S.idx.alu[i].grupo_id === F.grupo)) return false;
     if (F.alumno && aluIds(r).indexOf(F.alumno) < 0) return false;
     if (F.materia && r.materia !== F.materia) return false;
     if (F.estado === 'no' && !noHecha(r)) return false;
