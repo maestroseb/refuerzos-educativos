@@ -1,0 +1,254 @@
+<script>
+/* =====================================================================
+   Vista DATOS: indicadores, gráficos (SVG propio, con tooltip), mapa de
+   calor día × tramo, tablas de alumnado y profesorado, ficha por alumno.
+   Comparte filtros con el Diario.
+   ===================================================================== */
+VISTAS.datos = function(el) {
+  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Datos y estadísticas</div><h1 class="h1">Cómo van los <em>refuerzos</em></h1></header><div id="fBar"></div><div id="dBody"></div>';
+  const pintaBarra = () => { const fb = $('#fBar'); fb.innerHTML = ''; fb.appendChild(barraFiltros(full => { if (full) pintaBarra(); pintarDatos(); }, false)); };
+  pintaBarra();
+  pintarDatos();
+};
+
+/* Sesiones previstas por horario entre dos fechas (aprox.: no descuenta festivos). */
+function previstas(docId, a, b) {
+  const fr = S.d.horarios.filter(h => !docId || h.docente_id === docId);
+  if (!fr.length) return 0;
+  let n = 0;
+  for (let f = a; f <= b; f = sumaDias(f, 1)) {
+    const dia = diaDe(f);
+    if (!dia) continue;
+    const sem = tipoSemana(f);
+    fr.forEach(h => { if (h.dia === dia && (!h.semana || !sem || h.semana === sem)) n++; });
+  }
+  return n;
+}
+function rangoEfectivo(regs) {
+  let [a, b] = rangoFechas();
+  const hoy = hoyIso(), primero = S.d.registros.length ? S.d.registros[S.d.registros.length - 1].fecha : hoy;
+  if (a < primero) a = primero;
+  if (b > hoy) b = hoy;
+  return [a, b];
+}
+const media = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : 0;
+const fmt1 = n => n.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function pintarDatos() {
+  const c = $('#dBody');
+  const regs = filtrar(S.d.registros);
+  if (!regs.length) { c.innerHTML = '<div class="empty">' + artVacio() + '<h2 class="h2">Sin datos para mostrar</h2><p>' + (S.d.registros.length ? 'Amplía el periodo o limpia los filtros.' : 'Cuando haya sesiones registradas verás aquí su evolución.') + '</p></div>'; return; }
+  const [a, b] = rangoEfectivo(regs);
+  const valorados = regs.filter(r => +r.aprovechamiento > 0);
+  const alus = new Set(); regs.forEach(r => aluIds(r).forEach(i => alus.add(i)));
+  const docFiltro = F.quien === 'mios' ? S.actor : F.docente;
+  const prev = (F.grupo || F.alumno || F.materia) ? 0 : previstas(docFiltro, a, b);
+  const enRango = regs.filter(r => r.fecha >= a && r.fecha <= b);
+  const sesionesUnicas = new Set(enRango.map(r => r.docente_id + r.fecha + r.tramo_id)).size;
+  const cumpl = prev ? Math.min(100, Math.round(sesionesUnicas / prev * 100)) : null;
+
+  c.innerHTML = '<div class="kpis reveal" style="margin-top:10px">' +
+    kpi('Sesiones', regs.length, '', regs.length === 1 ? 'registrada' : 'registradas') +
+    kpi('Alumnado', alus.size, '', 'atendido') +
+    kpi('Aprovechamiento', valorados.length ? fmt1(media(valorados.map(r => +r.aprovechamiento))) : '—', valorados.length ? '/5' : '', valorados.length ? miniEstrellas(Math.round(media(valorados.map(r => +r.aprovechamiento)))) : 'sin valorar') +
+    kpi('Cumplimiento', cumpl == null ? '—' : cumpl, cumpl == null ? '' : '%', cumpl == null ? 'sin filtros de alumnado' : sesionesUnicas + ' de ' + prev + ' previstas') +
+    '</div>' +
+    '<div class="charts"><section class="card chart-card"><h3>Sesiones por semana</h3><p class="sub">Por materia</p><div id="chSem"></div></section>' +
+    '<section class="card chart-card"><h3>Reparto por materia</h3><p class="sub">Sesiones y aprovechamiento medio</p><div id="chMat"></div></section>' +
+    '<section class="card chart-card"><h3>Aprovechamiento</h3><p class="sub">Media semanal (1 a 5)</p><div id="chApr"></div></section>' +
+    '<section class="card chart-card"><h3>Cuándo se refuerza</h3><p class="sub">Sesiones por día y tramo</p><div id="chHeat"></div></section></div>' +
+    '<section class="card" style="margin-top:14px"><div class="field-label"><span>Alumnado</span><span class="hint">Toca para ver su ficha</span></div><div class="table-wrap" id="tAlu"></div></section>' +
+    (F.quien === 'todos' && !F.docente ? '<section class="card" style="margin-top:14px"><div class="field-label"><span>Profesorado</span><span class="hint">Previstas según horario, sin descontar festivos</span></div><div class="table-wrap" id="tDoc"></div></section>' : '');
+
+  graficoSemanas($('#chSem'), regs, a, b);
+  graficoMaterias($('#chMat'), regs);
+  graficoAprovechamiento($('#chApr'), regs);
+  mapaCalor($('#chHeat'), regs);
+  tablaAlumnado($('#tAlu'), regs);
+  if ($('#tDoc')) tablaDocentes($('#tDoc'), regs, a, b);
+}
+function kpi(t, v, unit, sub) { return '<div class="kpi"><small>' + t + '</small><b>' + v + (unit ? '<sub>' + unit + '</sub>' : '') + '</b><span>' + sub + '</span></div>'; }
+
+/* ---------- Tooltip compartido ---------- */
+function conTip(cont) {
+  cont.classList.add('chart');
+  const tip = document.createElement('div'); tip.className = 'tip'; tip.setAttribute('role', 'tooltip');
+  cont.appendChild(tip);
+  return {
+    show(x, y, html) { tip.innerHTML = html; tip.classList.add('on'); const w = cont.clientWidth; tip.style.left = Math.max(70, Math.min(w - 70, x)) + 'px'; tip.style.top = y + 'px'; },
+    hide() { tip.classList.remove('on'); }
+  };
+}
+
+/* El viewBox usa el ancho real para que el texto de los ejes no se encoja. */
+const anchoGrafico = cont => Math.max(280, Math.round(cont.clientWidth || 600));
+let _rsDatos;
+window.addEventListener('resize', () => { if (S.view !== 'datos') return; clearTimeout(_rsDatos); _rsDatos = setTimeout(pintarDatos, 200); });
+
+function semanasEntre(a, b) {
+  const out = [];
+  for (let w = lunesDe(a); w <= b; w = sumaDias(w, 7)) out.push(w);
+  return out;
+}
+
+function graficoSemanas(cont, regs, a, b) {
+  const mats = S.d.materias;
+  let weeks = semanasEntre(a, b);
+  if (weeks.length > 40) weeks = weeks.slice(-40);
+  const data = weeks.map(w => { const o = { w, tot: 0 }; mats.forEach(m => o[m] = 0); return o; });
+  const pos = {}; weeks.forEach((w, i) => pos[w] = i);
+  regs.forEach(r => { const i = pos[lunesDe(r.fecha)]; if (i == null) return; const m = mats.indexOf(r.materia) >= 0 ? r.materia : mats[mats.length - 1]; data[i][m]++; data[i].tot++; });
+  const max = Math.max(1, ...data.map(d => d.tot));
+  const nice = 4 * [1, 2, 5, 10, 20, 25, 50, 100, 250, 500].find(st => st * 4 >= max);
+  const W = anchoGrafico(cont), H = W < 500 ? 200 : 230, L = 28, R = 6, T = 8, B = 26;
+  const iw = W - L - R, ih = H - T - B, bw = iw / data.length, gap = Math.min(8, bw * .28);
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Sesiones por semana y materia">';
+  for (let k = 0; k <= 4; k++) { const y = T + ih - ih * k / 4; s += '<line class="gridl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text class="axis" x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + (nice * k / 4) + '</text>'; }
+  const cada = Math.ceil(data.length / Math.max(2, Math.floor(W / 80)));
+  data.forEach((d, i) => {
+    const x = L + i * bw + gap / 2, w = Math.max(2, bw - gap);
+    let y = T + ih;
+    const segs = mats.filter(m => d[m] > 0);
+    segs.forEach((m, j) => {
+      const h = ih * d[m] / nice, top = j === segs.length - 1;
+      const hh = Math.max(0, h - (j > 0 ? 2 : 0));
+      y -= h;
+      const r = Math.min(4, w / 2, hh);
+      s += top ? '<path d="M' + x + ' ' + (y + hh + (j > 0 ? 2 : 0)) + 'v' + (-(hh - r)) + 'q0 ' + (-r) + ' ' + r + ' ' + (-r) + 'h' + (w - 2 * r) + 'q' + r + ' 0 ' + r + ' ' + r + 'v' + (hh - r) + 'z" fill="' + colorMateria(m) + '"/>'
+        : '<rect x="' + x + '" y="' + (y + (j > 0 ? 2 : 0)) + '" width="' + w + '" height="' + hh + '" fill="' + colorMateria(m) + '"/>';
+    });
+    if (i % cada === 0) s += '<text class="axis" x="' + (x + w / 2) + '" y="' + (H - 6) + '" text-anchor="middle">' + fechaCorta(d.w) + '</text>';
+    s += '<rect class="hit" data-i="' + i + '" x="' + (L + i * bw) + '" y="' + T + '" width="' + bw + '" height="' + ih + '"/>';
+  });
+  s += '</svg>';
+  cont.innerHTML = '<div class="legend">' + mats.map(m => '<span style="--c:' + colorMateria(m) + '"><i></i>' + esc(m) + '</span>').join('') + '</div>' + s;
+  const tip = conTip(cont), svg = cont.querySelector('svg');
+  svg.addEventListener('pointermove', e => {
+    const h = e.target.closest('.hit'); if (!h) return tip.hide();
+    const d = data[+h.dataset.i], r = svg.getBoundingClientRect(), k = r.width / W;
+    tip.show((L + (+h.dataset.i + .5) * bw) * k, (T + ih - ih * d.tot / nice) * k + 34, '<b>Semana del ' + fechaCorta(d.w) + '</b>' + mats.map(m => '<div style="--c:' + colorMateria(m) + '"><i></i>' + esc(m) + ': ' + d[m] + '</div>').join('') + '<div style="opacity:.7;margin-top:4px">Total: ' + d.tot + '</div>');
+  });
+  svg.addEventListener('pointerleave', tip.hide);
+}
+
+function graficoMaterias(cont, regs) {
+  const mats = S.d.materias;
+  const tot = regs.length;
+  const filas = mats.map(m => { const rs = regs.filter(r => r.materia === m); const v = rs.filter(r => +r.aprovechamiento > 0); return { m, n: rs.length, med: media(v.map(r => +r.aprovechamiento)) }; });
+  const max = Math.max(1, ...filas.map(f => f.n));
+  cont.innerHTML = '<div style="display:grid;gap:16px;margin-top:4px">' + filas.map(f =>
+    '<div><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px"><span class="tag" style="--c:' + colorMateria(f.m) + ';font-size:14px;color:var(--ink)">' + esc(f.m) + '</span>' +
+    '<span class="num" style="font-size:13.5px"><b>' + f.n + '</b> <span class="muted">· ' + (tot ? Math.round(f.n / tot * 100) : 0) + '%' + (f.med ? ' · ★ ' + fmt1(f.med) : '') + '</span></span></div>' +
+    '<div style="height:12px;border-radius:6px;background:var(--seq-0);overflow:hidden"><div style="height:100%;width:' + (f.n / max * 100) + '%;background:' + colorMateria(f.m) + ';border-radius:6px;transition:width .8s var(--ease)"></div></div></div>').join('') + '</div>';
+}
+
+function graficoAprovechamiento(cont, regs) {
+  const porSem = {};
+  regs.forEach(r => { if (+r.aprovechamiento > 0) (porSem[lunesDe(r.fecha)] = porSem[lunesDe(r.fecha)] || []).push(+r.aprovechamiento); });
+  const pts = Object.keys(porSem).sort().slice(-40).map(w => ({ w, v: media(porSem[w]), n: porSem[w].length }));
+  if (!pts.length) { cont.innerHTML = '<p class="muted">Sin sesiones valoradas.</p>'; return; }
+  const W = anchoGrafico(cont), H = W < 500 ? 180 : 210, L = 28, R = 12, T = 12, B = 26, iw = W - L - R, ih = H - T - B;
+  const x = i => L + (pts.length === 1 ? iw / 2 : iw * i / (pts.length - 1));
+  const y = v => T + ih - ih * (v - 1) / 4;
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Aprovechamiento medio por semana">';
+  for (let k = 1; k <= 5; k++) s += '<line class="gridl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(k) + '" y2="' + y(k) + '"/><text class="axis" x="' + (L - 8) + '" y="' + (y(k) + 4) + '" text-anchor="end">' + k + '</text>';
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.v).toFixed(1)).join('');
+  s += '<path d="' + d + 'L' + x(pts.length - 1) + ' ' + (T + ih) + 'L' + x(0) + ' ' + (T + ih) + 'Z" fill="var(--star)" opacity=".10"/>';
+  s += '<path d="' + d + '" fill="none" stroke="var(--star)" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>';
+  const cada = Math.ceil(pts.length / Math.max(2, Math.floor(W / 80)));
+  pts.forEach((p, i) => { if (i % cada === 0 || i === pts.length - 1) s += '<text class="axis" x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + fechaCorta(p.w) + '</text>'; });
+  s += '<line id="xh" class="gridl" y1="' + T + '" y2="' + (T + ih) + '" style="opacity:0;stroke:var(--ink-2)"/><circle id="xd" r="5" fill="var(--star)" stroke="var(--surface)" stroke-width="2" style="opacity:0"/>';
+  const last = pts[pts.length - 1];
+  s += '<circle cx="' + x(pts.length - 1) + '" cy="' + y(last.v) + '" r="4.5" fill="var(--star)" stroke="var(--surface)" stroke-width="2"/>';
+  s += '<rect class="hit" x="' + L + '" y="' + T + '" width="' + iw + '" height="' + ih + '"/></svg>';
+  cont.innerHTML = s;
+  const tip = conTip(cont), svg = cont.querySelector('svg'), xh = svg.querySelector('#xh'), xd = svg.querySelector('#xd');
+  svg.addEventListener('pointermove', e => {
+    const r = svg.getBoundingClientRect(), k = r.width / W, px = (e.clientX - r.left) / k;
+    const i = pts.length === 1 ? 0 : Math.max(0, Math.min(pts.length - 1, Math.round((px - L) / iw * (pts.length - 1))));
+    const p = pts[i];
+    xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.style.opacity = .5;
+    xd.setAttribute('cx', x(i)); xd.setAttribute('cy', y(p.v)); xd.style.opacity = 1;
+    tip.show(x(i) * k, y(p.v) * k, '<b>Semana del ' + fechaCorta(p.w) + '</b>★ ' + fmt1(p.v) + ' de media · ' + p.n + (p.n === 1 ? ' sesión' : ' sesiones'));
+  });
+  svg.addEventListener('pointerleave', () => { tip.hide(); xh.style.opacity = 0; xd.style.opacity = 0; });
+}
+
+function mapaCalor(cont, regs) {
+  const tr = tramosLectivos();
+  const m = {}; let max = 0;
+  regs.forEach(r => { const k = diaDe(r.fecha) + '|' + r.tramo_id; m[k] = (m[k] || 0) + 1; max = Math.max(max, m[k]); });
+  let h = '<div class="heat" style="grid-template-columns:auto repeat(5,minmax(0,1fr))"><span></span>' + DIAS.map(d => '<span class="h">' + DIA_CORTO[d] + '</span>').join('');
+  tr.forEach(t => {
+    h += '<span class="r">' + esc(t.hora_inicio || t.etiqueta) + '</span>';
+    DIAS.forEach(d => {
+      const v = m[d + '|' + t.id] || 0, l = v ? Math.max(1, Math.ceil(v / max * 5)) : 0;
+      h += '<span class="c" data-l="' + l + '" style="background:var(--seq-' + l + ')" title="' + esc(DIA_LARGO[d] + ' ' + etiquetaTramo(t) + ': ' + v + ' sesiones') + '">' + (v || '') + '</span>';
+    });
+  });
+  cont.innerHTML = h + '</div><div class="legend" style="margin:12px 0 0;align-items:center">Menos ' + [0, 1, 2, 3, 4, 5].map(l => '<span style="--c:var(--seq-' + l + ')"><i style="margin:0"></i></span>').join('') + ' Más</div>';
+}
+
+let ordenAlu = { k: 'n', dir: -1 };
+function statsAlumnado(regs) {
+  const st = {};
+  regs.forEach(r => aluIds(r).forEach(i => {
+    const o = st[i] = st[i] || { id: i, n: 0, v: [], ult: '', mats: {} };
+    o.n++; if (+r.aprovechamiento > 0) o.v.push(+r.aprovechamiento);
+    if (r.fecha > o.ult) o.ult = r.fecha;
+    o.mats[r.materia] = (o.mats[r.materia] || 0) + 1;
+  }));
+  return Object.values(st).map(o => Object.assign(o, { nombre: nombreAlu(o.id), grupo: S.idx.alu[o.id] ? nombreGrupo(S.idx.alu[o.id].grupo_id) : '', med: media(o.v) }));
+}
+function tablaAlumnado(cont, regs) {
+  const filas = statsAlumnado(regs);
+  const k = ordenAlu.k, dir = ordenAlu.dir;
+  filas.sort((a, b) => (typeof a[k] === 'string' ? a[k].localeCompare(b[k], 'es', { numeric: true }) : a[k] - b[k]) * dir);
+  const th = (key, t, cls) => '<th class="' + (cls || '') + '" aria-sort="' + (k === key ? (dir > 0 ? 'ascending' : 'descending') : 'none') + '"><button data-k="' + key + '">' + t + (k === key ? (dir > 0 ? ' ↑' : ' ↓') : '') + '</button></th>';
+  cont.innerHTML = '<table class="tbl"><thead><tr>' + th('nombre', 'Alumno/a') + th('grupo', 'Grupo') + th('n', 'Sesiones', 'r') + th('med', 'Media', 'r') + '<th>Materias</th>' + th('ult', 'Última', 'r') + '</tr></thead><tbody>' +
+    filas.map(f => '<tr data-a="' + esc(f.id) + '" tabindex="0"><td><b style="font-weight:600">' + esc(f.nombre) + '</b></td><td class="muted">' + esc(f.grupo) + '</td><td class="r">' + f.n + '</td><td class="r">' + (f.med ? fmt1(f.med) : '—') + '</td><td>' +
+      '<div class="splitbar" role="img" aria-label="' + esc(Object.keys(f.mats).map(m => m + ' ' + f.mats[m]).join(', ')) + '">' + S.d.materias.filter(m => f.mats[m]).map(m => '<span style="--c:' + colorMateria(m) + ';flex:' + f.mats[m] + '"></span>').join('') + '</div></td><td class="r muted">' + esc(relativa(f.ult)) + '</td></tr>').join('') +
+    '</tbody></table>';
+  cont.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { ordenAlu = { k: b.dataset.k, dir: ordenAlu.k === b.dataset.k ? -ordenAlu.dir : (b.dataset.k === 'nombre' || b.dataset.k === 'grupo' ? 1 : -1) }; tablaAlumnado(cont, regs); });
+  cont.querySelectorAll('[data-a]').forEach(tr => { tr.onclick = () => fichaAlumno(tr.dataset.a); tr.onkeydown = e => { if (e.key === 'Enter') fichaAlumno(tr.dataset.a); }; });
+}
+function tablaDocentes(cont, regs, a, b) {
+  const ids = Array.from(new Set(S.d.horarios.map(h => h.docente_id).concat(regs.map(r => r.docente_id))));
+  const filas = ids.map(id => {
+    const rs = regs.filter(r => r.docente_id === id);
+    const ses = new Set(rs.filter(r => r.fecha >= a && r.fecha <= b).map(r => r.fecha + r.tramo_id)).size;
+    const p = previstas(id, a, b);
+    return { id, nombre: nombreDocId(id), n: rs.length, ses, p, pct: p ? Math.min(100, Math.round(ses / p * 100)) : null };
+  }).sort((x, y) => (y.pct || 0) - (x.pct || 0) || y.n - x.n);
+  cont.innerHTML = '<table class="tbl"><thead><tr><th>Docente</th><th class="r">Registradas</th><th class="r">Previstas</th><th>Cumplimiento</th></tr></thead><tbody>' + filas.map(f =>
+    '<tr data-d="' + esc(f.id) + '"><td><b style="font-weight:600">' + esc(f.nombre) + '</b></td><td class="r">' + f.ses + '</td><td class="r muted">' + (f.p || '—') + '</td><td><div style="display:flex;align-items:center;gap:10px"><div class="meter" style="flex:1"><span style="width:' + (f.pct || 0) + '%"></span></div><span class="num" style="font-size:13px;min-width:36px;text-align:right">' + (f.pct == null ? '—' : f.pct + '%') + '</span></div></td></tr>').join('') + '</tbody></table>';
+  cont.querySelectorAll('[data-d]').forEach(tr => tr.onclick = () => { F.docente = tr.dataset.d; guardaF(); ir('datos'); });
+}
+
+/* ---------- Ficha individual (imprimible) ---------- */
+function fichaAlumno(id) {
+  const a = S.idx.alu[id];
+  const regs = S.d.registros.filter(r => aluIds(r).indexOf(id) >= 0);
+  const v = regs.filter(r => +r.aprovechamiento > 0).map(r => +r.aprovechamiento);
+  const mats = {}; regs.forEach(r => mats[r.materia] = (mats[r.materia] || 0) + 1);
+  const docs = new Set(regs.map(r => r.docente_id));
+  const cron = regs.slice().reverse();
+  let spark = '';
+  if (cron.length > 1) {
+    const W = 600, H = 90, P = 8, x = i => P + (W - 2 * P) * i / (cron.length - 1), y = s => H - P - (H - 2 * P) * ((s || 3) - 1) / 4;
+    spark = '<div class="chart" style="margin:6px 0 2px"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Evolución del aprovechamiento">' +
+      [1, 3, 5].map(k => '<line class="gridl" x1="0" x2="' + W + '" y1="' + y(k) + '" y2="' + y(k) + '"/>').join('') +
+      '<path d="' + cron.map((r, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(+r.aprovechamiento).toFixed(1)).join('') + '" fill="none" stroke="var(--star)" stroke-width="2" stroke-linejoin="round"/>' +
+      cron.map((r, i) => '<circle cx="' + x(i) + '" cy="' + y(+r.aprovechamiento) + '" r="4" fill="' + colorMateria(r.materia) + '" stroke="var(--surface)" stroke-width="1.5"><title>' + esc(fechaCorta(r.fecha) + ' · ' + r.materia + ' · ' + (r.aprovechamiento || '–') + '/5') + '</title></circle>').join('') + '</svg></div>';
+  }
+  const inn = abrirHoja(cabHoja(esc(a ? a.nombre : 'Alumno/a'), esc((a ? nombreGrupo(a.grupo_id) : '') + ' · ' + (S.d.centro || ''))) +
+    '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">' + kpi('Sesiones', regs.length, '', docs.size + (docs.size === 1 ? ' docente' : ' docentes')) +
+    kpi('Media', v.length ? fmt1(media(v)) : '—', v.length ? '/5' : '', v.length ? miniEstrellas(Math.round(media(v))) : '') +
+    kpi('Última', regs.length ? esc(fechaCorta(regs[0].fecha)) : '—', '', regs.length ? esc(relativa(regs[0].fecha)) : '') + '</div>' +
+    (regs.length ? '<div class="legend" style="margin-top:16px">' + Object.keys(mats).map(m => '<span style="--c:' + colorMateria(m) + '"><i></i>' + esc(m) + ' · ' + mats[m] + '</span>').join('') + '</div>' + spark : '') +
+    '<div class="hist" style="margin-top:18px">' + (regs.map(r => '<div class="hist-i" style="--c:' + colorMateria(r.materia) + '"><span class="bar"></span><div><div class="meta"><b style="color:var(--ink);font-weight:600">' + esc(fechaLarga(r.fecha)) + '</b><span>' + esc(r.materia) + '</span>' + miniEstrellas(+r.aprovechamiento) + '<span>' + esc(nombreDocId(r.docente_id)) + '</span></div>' + (r.trabajado ? '<p style="-webkit-line-clamp:unset;white-space:pre-line">' + esc(r.trabajado) + '</p>' : '') + '</div></div>').join('') || '<p class="muted">Sin sesiones registradas.</p>') + '</div>' +
+    '<div class="sheet-foot no-print"><button class="btn" id="fDiario">Ver en el diario</button><button class="btn primary" id="fPrint">' + IC.print + 'Imprimir / PDF</button></div>', { wide: true });
+  $('#fPrint', inn).onclick = () => { document.body.classList.add('printing'); window.print(); setTimeout(() => document.body.classList.remove('printing'), 500); };
+  $('#fDiario', inn).onclick = () => { cerrarHoja(); Object.assign(F, { alumno: id, grupo: '', quien: 'todos', docente: '', materia: '', q: '' }); guardaF(); ir('diario'); };
+}
+</script>

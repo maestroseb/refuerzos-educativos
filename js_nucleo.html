@@ -1,0 +1,287 @@
+<script>
+/* =====================================================================
+   Núcleo: estado, llamadas al servidor, utilidades, navegación, avisos y
+   hojas modales. Cada vista (registrar, diario, datos, ajustes) se pinta
+   desde su propio parcial con una función VISTAS[nombre]().
+   ===================================================================== */
+const S = { d: null, view: 'registrar', actor: '', idx: {} };
+const VISTAS = {};
+const DIAS = ['L', 'M', 'X', 'J', 'V'];
+const DIA_LARGO = { L: 'Lunes', M: 'Martes', X: 'Miércoles', J: 'Jueves', V: 'Viernes' };
+const DIA_CORTO = { L: 'Lun', M: 'Mar', X: 'Mié', J: 'Jue', V: 'Vie' };
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const MESES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const NIVELES = ['', 'Muy bajo', 'Bajo', 'Correcto', 'Bueno', 'Excelente'];
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const IC = {
+  check: '<svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  left: '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
+  right: '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  star: '<svg viewBox="0 0 24 24"><path d="M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.4l-5.8 3.1 1.1-6.5L2.6 9.4l6.5-.9z" stroke-linejoin="round"/></svg>',
+  down: '<svg viewBox="0 0 24 24"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>',
+  print: '<svg viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 18H4v-7h16v7h-3M7 14h10v7H7z"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  sync: '<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.7-4M4 4v4h4M4 13a8 8 0 0 0 14.7 4M20 20v-4h-4"/></svg>'
+};
+
+/* ---------- Servidor ---------- */
+function api(fn, ...args) {
+  return new Promise((ok, ko) => {
+    google.script.run.withSuccessHandler(ok).withFailureHandler(e => ko(e && e.message ? e : new Error(String(e))))[fn](...args);
+  });
+}
+function fallo(e) { toast((e && e.message) || 'Algo ha fallado', 'err'); console.error(e); }
+
+/* ---------- Almacén local (comodidades por usuario) ---------- */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('ref.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('ref.' + k, JSON.stringify(v)); } catch (e) {} }
+};
+
+/* ---------- Fechas ---------- */
+const pad = n => ('0' + n).slice(-2);
+const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const deIso = s => { const p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2], 12); };
+const hoyIso = () => iso(new Date());
+const diaDe = s => { const w = deIso(s).getDay(); return w >= 1 && w <= 5 ? DIAS[w - 1] : ''; };
+const lunesDe = s => { const d = deIso(s); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
+const sumaDias = (s, n) => { const d = deIso(s); d.setDate(d.getDate() + n); return iso(d); };
+const fechaCorta = s => { const d = deIso(s); return d.getDate() + ' ' + MESES[d.getMonth()]; };
+const fechaLarga = s => { const d = deIso(s); const w = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d.getDay()]; return w + ', ' + d.getDate() + ' de ' + MESES_L[d.getMonth()]; };
+const relativa = s => {
+  const n = Math.round((deIso(hoyIso()) - deIso(s)) / 864e5);
+  if (n === 0) return 'Hoy'; if (n === 1) return 'Ayer'; if (n === -1) return 'Mañana';
+  if (n > 1 && n < 7) return 'Hace ' + n + ' días';
+  return fechaCorta(s);
+};
+const minutos = h => { const m = String(h || '').match(/(\d+):(\d+)/); return m ? +m[1] * 60 + +m[2] : NaN; };
+const ahoraMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+
+/* Semana A/B de una fecha según la pestaña Semanas ('' si no alterna). */
+function tipoSemana(f) {
+  const w = S.d.semanas.find(x => x.fecha_inicio <= f && f <= (x.fecha_fin || x.fecha_inicio));
+  return w ? String(w.tipo || '').toUpperCase() : '';
+}
+
+/* ---------- Índices ---------- */
+function indexar() {
+  const d = S.d, I = S.idx = {};
+  I.tramo = {}; I.grupo = {}; I.doc = {}; I.alu = {};
+  d.tramos.sort((a, b) => (+a.orden || 0) - (+b.orden || 0) || minutos(a.hora_inicio) - minutos(b.hora_inicio));
+  d.grupos.sort((a, b) => (+a.orden || 0) - (+b.orden || 0) || String(a.nombre_corto).localeCompare(b.nombre_corto, 'es', { numeric: true }));
+  d.alumnado.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  d.docentes.sort((a, b) => nombreDoc(a).localeCompare(nombreDoc(b), 'es'));
+  d.registros.sort((a, b) => b.fecha.localeCompare(a.fecha) || ordenTramo(b.tramo_id) - ordenTramo(a.tramo_id) || String(b.creado).localeCompare(String(a.creado)));
+  d.tramos.forEach(t => I.tramo[t.id] = t);
+  d.grupos.forEach(g => I.grupo[g.id] = g);
+  d.docentes.forEach(x => I.doc[x.id] = x);
+  d.alumnado.forEach(a => I.alu[a.id] = a);
+}
+function ordenTramo(id) { const t = S.idx.tramo && S.idx.tramo[id]; return t ? minutos(t.hora_inicio) : 0; }
+const tramosLectivos = () => S.d.tramos.filter(t => String(t.es_recreo) !== 'true');
+const nombreDoc = d => d ? (d.nombre_corto || d.nombre_completo || '¿?') : '¿?';
+const nombreDocId = id => S.idx.doc[id] ? nombreDoc(S.idx.doc[id]) : (id ? 'Docente' : '—');
+const nombreGrupo = id => S.idx.grupo[id] ? S.idx.grupo[id].nombre_corto : (id ? '¿?' : 'Sin grupo');
+const nombreAlu = id => S.idx.alu[id] ? S.idx.alu[id].nombre : 'Alumno/a eliminado';
+const etiquetaTramo = t => t ? (t.hora_inicio ? t.hora_inicio + '–' + t.hora_fin : (t.etiqueta || 'Tramo')) : '—';
+const iniciales = s => String(s || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const primerNombre = s => String(s || '').split(/[\s,]+/)[0];
+function claseMateria(m) {
+  const s = String(m || '').toLowerCase();
+  if (/leng|lect|escrit|castell/.test(s)) return 'm-lengua';
+  if (/mat|cálc|calc|num/.test(s)) return 'm-mates';
+  return 'm-otros';
+}
+const colorMateria = m => 'var(--' + claseMateria(m).slice(2) + ')';
+function miniEstrellas(n) {
+  let h = '<span class="mini-stars" role="img" aria-label="' + n + ' de 5 estrellas">';
+  for (let i = 1; i <= 5; i++) h += IC.star.replace('<svg', '<svg class="' + (i <= n ? 'on' : '') + '"');
+  return h + '</span>';
+}
+const aluIds = r => String(r.alumno_ids || '').split(',').filter(Boolean);
+const puedoEditar = r => S.d.yo.admin || r.docente_id === S.actor;
+
+/* ---------- Navegación ---------- */
+function ir(v, opts) {
+  if (v === 'ajustes' && !S.d) return;
+  S.view = v;
+  $$('#nav .nav-i').forEach(b => { if (b.dataset.view === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  const m = $('#main');
+  m.innerHTML = '';
+  const el = document.createElement('div');
+  el.className = 'view';
+  m.appendChild(el);
+  VISTAS[v](el, opts || {});
+  if (!opts || !opts.keepScroll) window.scrollTo({ top: 0 });
+  LS.set('vista', v);
+}
+document.getElementById('nav').addEventListener('click', e => { const b = e.target.closest('.nav-i'); if (b) ir(b.dataset.view); });
+
+function cabeceraMovil() {
+  const d = S.idx.doc[S.actor];
+  return '<div class="top"><span class="chipline"><span class="brand-mark" style="width:30px;height:30px;border-radius:9px"><svg viewBox="0 0 32 32" style="width:20px;height:20px"><path d="M6 25c4-9 9-14 20-18"/><circle cx="9" cy="10" r="3.2"/><circle cx="23" cy="22" r="3.2"/></svg></span>' +
+    '<b style="color:var(--ink);font:600 17px var(--f-display);letter-spacing:-.02em">Refuerzos</b></span>' +
+    '<button class="avatar" onclick="menuUsuario()" aria-label="Tu cuenta y preferencias">' + esc(iniciales(d ? (d.nombre_completo || d.nombre_corto) : (S.d.yo.email || '?'))) + '</button></div>';
+}
+
+/* ---------- Avisos ---------- */
+function toast(msg, tipo) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (tipo === 'err' ? ' err' : '');
+  t.innerHTML = (tipo === 'err' ? IC.info : IC.check) + '<span>' + esc(msg) + '</span>';
+  const box = $('#toasts');
+  box.appendChild(t);
+  // Como "popover", el aviso queda por encima de las hojas modales abiertas.
+  if (box.showPopover) try { if (box.matches(':popover-open')) box.hidePopover(); box.showPopover(); } catch (e) {}
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, tipo === 'err' ? 5200 : 2600);
+}
+function sello(txt) {
+  const s = document.createElement('div');
+  s.className = 'stamp';
+  s.innerHTML = '<div class="stamp-in">' + esc(txt) + '</div>';
+  document.body.appendChild(s);
+  setTimeout(() => s.remove(), 1300);
+  if (navigator.vibrate) try { navigator.vibrate(18); } catch (e) {}
+}
+
+/* ---------- Hoja modal ---------- */
+function abrirHoja(html, opts) {
+  const dlg = $('#sheet'), inn = $('#sheetIn');
+  dlg.classList.toggle('wide', !!(opts && opts.wide));
+  inn.innerHTML = html;
+  if (!dlg.open) dlg.showModal();
+  inn.scrollTop = 0;
+  const f = inn.querySelector('[autofocus]');
+  if (f && window.matchMedia('(min-width: 720px)').matches) setTimeout(() => f.focus(), 60);
+  return inn;
+}
+function cerrarHoja() { const d = $('#sheet'); if (d.open) d.close(); }
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') cerrarHoja(); });
+const cabHoja = (t, sub) => '<div class="sheet-head"><div><h2 class="h2">' + t + '</h2>' + (sub ? '<div class="muted" style="margin-top:4px;font-size:14px">' + sub + '</div>' : '') + '</div><button class="close no-print" onclick="cerrarHoja()" aria-label="Cerrar">' + IC.x + '</button></div>';
+function confirmar(msg, okTxt) {
+  return new Promise(res => {
+    const inn = abrirHoja(cabHoja('¿Seguro?') + '<p style="margin:0;color:var(--ink-2)">' + esc(msg) + '</p><div class="sheet-foot"><button class="btn" data-r="0">Cancelar</button><button class="btn primary" data-r="1">' + esc(okTxt || 'Sí') + '</button></div>');
+    inn.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { cerrarHoja(); res(b.dataset.r === '1'); });
+    $('#sheet').addEventListener('close', () => res(false), { once: true });
+  });
+}
+
+/* ---------- Usuario, tema y "registrar como" ---------- */
+function aplicarTema() {
+  const t = LS.get('tema', 'auto');
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+}
+aplicarTema();
+function menuUsuario() {
+  const yo = S.d.yo, d = S.idx.doc[S.actor], tema = LS.get('tema', 'auto');
+  const puedeElegir = yo.admin || yo.elegible;
+  const opts = S.d.docentes.filter(x => x.activo).map(x => '<option value="' + esc(x.id) + '"' + (x.id === S.actor ? ' selected' : '') + '>' + esc(x.nombre_completo || x.nombre_corto) + '</option>').join('');
+  const inn = abrirHoja(cabHoja(esc(d ? (d.sustituto && yo.comoSustituto ? d.sustituto : (d.nombre_completo || d.nombre_corto)) : 'Sin identificar'), esc(yo.email || 'Cuenta sin email visible') + (yo.admin ? ' · Administración' : '')) +
+    '<div class="stack">' +
+    (puedeElegir ? '<div><label class="lbl" for="actorSel">' + (yo.admin ? 'Registrar en nombre de' : '¿Quién eres?') + '</label><select class="select" id="actorSel"><option value="">—</option>' + opts + '</select>' +
+      (yo.elegible && !yo.admin ? '<p class="muted" style="font-size:13px;margin:6px 0 0">Tu email no está en la lista de docentes. Pide a la administración que lo añada para entrar directamente.</p>' : '') + '</div>' : '') +
+    '<div><span class="lbl">Apariencia</span><div class="seg" id="temaSeg">' + [['auto', 'Automática'], ['light', 'Clara'], ['dark', 'Oscura']].map(([k, v]) => '<button aria-pressed="' + (tema === k) + '" data-t="' + k + '">' + v + '</button>').join('') + '</div></div>' +
+    '</div>');
+  const sel = inn.querySelector('#actorSel');
+  if (sel) sel.onchange = () => { S.actor = sel.value; LS.set('actor', S.actor); pintarYo(); toast('Ahora registras como ' + nombreDocId(S.actor)); if (S.view === 'registrar') ir('registrar'); };
+  inn.querySelectorAll('#temaSeg button').forEach(b => b.onclick = () => {
+    LS.set('tema', b.dataset.t); aplicarTema();
+    inn.querySelectorAll('#temaSeg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  });
+}
+$('#meBtn').addEventListener('click', () => S.d && menuUsuario());
+function pintarYo() {
+  const d = S.idx.doc[S.actor], yo = S.d.yo;
+  const nombre = d ? (yo.comoSustituto && d.sustituto ? d.sustituto : (d.nombre_completo || d.nombre_corto)) : (yo.email || 'Sin identificar');
+  $('#meNombre').textContent = nombre;
+  $('#meAvatar').textContent = iniciales(nombre);
+  $('#meRol').textContent = yo.admin ? 'Administración' : (yo.comoSustituto ? 'Sustitución' : 'Docente');
+  $('#centroNombre').textContent = S.d.centro || 'Diario de sesiones';
+}
+
+/* ---------- Filtros compartidos (Diario y Datos) ---------- */
+const F = LS.get('filtros', { quien: 'todos', rango: 'curso', grupo: '', alumno: '', docente: '', materia: '', q: '', desde: '', hasta: '' });
+function rangoFechas() {
+  const h = hoyIso();
+  const y = deIso(h).getFullYear(), m = deIso(h).getMonth();
+  const inicioCurso = (m >= 8 ? y : y - 1) + '-09-01';
+  switch (F.rango) {
+    case 'semana': return [lunesDe(h), sumaDias(lunesDe(h), 6)];
+    case 'mes': return [h.slice(0, 8) + '01', h];
+    case '30': return [sumaDias(h, -29), h];
+    case 'trim': {
+      const t = m >= 8 ? [y + '-09-01', y + '-12-31'] : m <= 2 ? [y + '-01-01', y + '-03-31'] : [y + '-04-01', y + '-06-30'];
+      return t;
+    }
+    case 'custom': return [F.desde || inicioCurso, F.hasta || h];
+    default: return [inicioCurso, (m >= 8 ? y + 1 : y) + '-08-31'];
+  }
+}
+function filtrar(regs) {
+  const [a, b] = rangoFechas(), q = F.q.trim().toLowerCase();
+  return regs.filter(r => {
+    if (r.fecha < a || r.fecha > b) return false;
+    if (F.quien === 'mios' && r.docente_id !== S.actor) return false;
+    if (F.docente && r.docente_id !== F.docente) return false;
+    if (F.grupo && r.grupo_id !== F.grupo && !aluIds(r).some(i => S.idx.alu[i] && S.idx.alu[i].grupo_id === F.grupo)) return false;
+    if (F.alumno && aluIds(r).indexOf(F.alumno) < 0) return false;
+    if (F.materia && r.materia !== F.materia) return false;
+    if (q && (r.trabajado + ' ' + r.alumnos_txt + ' ' + aluIds(r).map(nombreAlu).join(' ') + ' ' + nombreDocId(r.docente_id)).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+function barraFiltros(onChange, conBusqueda) {
+  const opt = (v, t, sel) => '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(t) + '</option>';
+  const alus = S.d.alumnado.filter(a => !F.grupo || a.grupo_id === F.grupo);
+  const html = '<div class="filters" role="group" aria-label="Filtros">' +
+    '<div class="seg" data-f="quien">' + opt2('todos', 'Todo el centro') + opt2('mios', 'Mis sesiones') + '</div>' +
+    '<select class="select sm" data-f="rango" aria-label="Periodo">' + [['semana', 'Esta semana'], ['30', 'Últimos 30 días'], ['mes', 'Este mes'], ['trim', 'Este trimestre'], ['curso', 'Todo el curso'], ['custom', 'Personalizado…']].map(([v, t]) => opt(v, t, F.rango)).join('') + '</select>' +
+    (F.rango === 'custom' ? '<input type="date" class="input sm" data-f="desde" value="' + esc(F.desde) + '" aria-label="Desde"><input type="date" class="input sm" data-f="hasta" value="' + esc(F.hasta) + '" aria-label="Hasta">' : '') +
+    '<select class="select sm" data-f="grupo" aria-label="Grupo">' + opt('', 'Todos los grupos', F.grupo) + S.d.grupos.map(g => opt(g.id, g.nombre_corto, F.grupo)).join('') + '</select>' +
+    '<select class="select sm" data-f="alumno" aria-label="Alumno o alumna">' + opt('', 'Todo el alumnado', F.alumno) + alus.map(a => opt(a.id, a.nombre, F.alumno)).join('') + '</select>' +
+    '<select class="select sm" data-f="materia" aria-label="Materia">' + opt('', 'Todas las materias', F.materia) + S.d.materias.map(m => opt(m, m, F.materia)).join('') + '</select>' +
+    (F.quien === 'todos' ? '<select class="select sm" data-f="docente" aria-label="Docente">' + opt('', 'Todo el profesorado', F.docente) + S.d.docentes.map(x => opt(x.id, nombreDoc(x), F.docente)).join('') + '</select>' : '') +
+    (hayFiltros() ? '<button class="btn sm" data-reset>Limpiar</button>' : '') +
+    '</div>' +
+    (conBusqueda ? '<div class="search" style="margin:6px 0 2px">' + IC.search + '<input class="input sm" type="search" data-f="q" placeholder="Buscar en lo trabajado, alumnado, docente…" value="' + esc(F.q) + '" aria-label="Buscar"></div>' : '');
+  function opt2(v, t) { return '<button data-v="' + v + '" aria-pressed="' + (F.quien === v) + '">' + t + '</button>'; }
+  const wrap = document.createElement('div');
+  wrap.innerHTML = html;
+  wrap.addEventListener('change', e => { const k = e.target.dataset.f; if (!k) return; F[k] = e.target.value; if (k === 'grupo') F.alumno = ''; guardaF(); onChange(true); });
+  let tq;
+  wrap.addEventListener('input', e => { if (e.target.dataset.f !== 'q') return; F.q = e.target.value; clearTimeout(tq); tq = setTimeout(() => { guardaF(); onChange(false); }, 180); });
+  wrap.addEventListener('click', e => {
+    const b = e.target.closest('[data-v]');
+    if (b) { F.quien = b.dataset.v; if (F.quien === 'mios') F.docente = ''; guardaF(); onChange(true); }
+    if (e.target.closest('[data-reset]')) { Object.assign(F, { quien: 'todos', rango: 'curso', grupo: '', alumno: '', docente: '', materia: '', q: '' }); guardaF(); onChange(true); }
+  });
+  return wrap;
+}
+const hayFiltros = () => F.quien !== 'todos' || F.rango !== 'curso' || F.grupo || F.alumno || F.docente || F.materia || F.q;
+const guardaF = () => LS.set('filtros', F);
+
+/* ---------- Arranque ---------- */
+function arrancar() {
+  api('inicio').then(d => {
+    S.d = d;
+    indexar();
+    S.actor = d.yo.docenteId || ((d.yo.elegible || d.yo.admin) ? LS.get('actor', '') : '');
+    if (S.actor && !S.idx.doc[S.actor]) S.actor = d.yo.docenteId || '';
+    pintarYo();
+    $('[data-view="ajustes"]').hidden = !d.yo.admin;
+    const v = LS.get('vista', 'registrar');
+    ir(v === 'ajustes' && !d.yo.admin ? 'registrar' : (VISTAS[v] ? v : 'registrar'));
+    if (!S.actor && d.docentes.length && (d.yo.elegible || d.yo.admin) && !d.yo.admin) setTimeout(menuUsuario, 400);
+  }).catch(e => {
+    $('#main').innerHTML = '<div class="empty"><h2 class="h2">No he podido cargar los datos</h2><p>' + esc(e.message) + '</p><button class="btn" onclick="location.reload()">Reintentar</button></div>';
+  });
+}
+document.addEventListener('DOMContentLoaded', arrancar);
+</script>
