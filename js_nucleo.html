@@ -201,10 +201,21 @@ function menuUsuario() {
   });
 }
 $('#meBtn').addEventListener('click', () => S.d && menuUsuario());
+/* "Nombre Apellido1", tanto de "Ana García López" como de "García López, Ana". */
+function nombreYApellido(s) {
+  s = String(s || '').trim();
+  // Primera palabra "plena" (con sus partículas: de, del, la…) de una lista de palabras.
+  const primera = w => { const o = []; for (const x of w) { o.push(x); if (!/^(de|del|la|las|los|y)$/i.test(x)) break; } return o.join(' '); };
+  if (s.indexOf(',') > 0) { const [ap, nom] = s.split(',').map(x => x.trim()); return nom + ' ' + primera(ap.split(/\s+/)); }
+  const w = s.split(/\s+/);
+  return w.length < 2 ? s : w[0] + ' ' + primera(w.slice(1));
+}
 function pintarYo() {
   const d = S.idx.doc[S.actor], yo = S.d.yo;
-  const nombre = d ? (yo.comoSustituto && d.sustituto ? d.sustituto : (d.nombre_completo || d.nombre_corto)) : (yo.email || 'Sin identificar');
+  const completo = d ? (yo.comoSustituto && d.sustituto ? d.sustituto : (d.nombre_completo || d.nombre_corto)) : (yo.email || 'Sin identificar');
+  const nombre = d ? nombreYApellido(completo) : completo;
   $('#meNombre').textContent = nombre;
+  $('#meBtn').title = completo + (yo.email ? ' · ' + yo.email : '');
   $('#meAvatar').textContent = iniciales(nombre);
   $('#meRol').textContent = yo.admin ? 'Administración' : (yo.comoSustituto ? 'Sustitución' : 'Docente');
   $('#centroNombre').textContent = S.d.centro || 'Diario de sesiones';
