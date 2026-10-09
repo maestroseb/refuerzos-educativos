@@ -318,7 +318,22 @@ svg { flex: none; }
 .savebar .sum span { opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .savebar .btn { background: var(--bg); color: var(--ink); border-color: var(--bg); min-height: 46px; padding: 10px 22px; }
 .savebar .btn[disabled] { opacity: .35; }
-.savebar .btn.saving { pointer-events: none; }
+.savebar[hidden] { display: none; }
+.savebar.entra { animation: sbin .45s var(--spring); }
+@keyframes sbin { from { transform: translateY(24px) scale(.96); opacity: 0; } }
+.toast-acc { margin-left: auto; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.2); font-weight: 600; font-size: 13px; color: inherit; }
+.cola {
+  position: fixed; z-index: 95; right: 14px; top: calc(14px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: center; gap: 8px; padding: 7px 14px 7px 10px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-2);
+  font-size: 12.5px; font-weight: 600; color: var(--ink-2); white-space: nowrap; animation: tin .4s var(--spring);
+}
+.cola.off { color: var(--danger); }
+.cola-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--ink); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 1023px) { .cola { top: auto; right: 50%; transform: translateX(50%); bottom: calc(150px + var(--safe-b)); } }
+.pend { font-weight: 600; color: var(--ink-2); display: inline-flex; align-items: center; gap: 5px; }
+.pend::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--ink-2); animation: spin .8s linear infinite; }
 @media (min-width: 1024px) { .savebar { left: calc(var(--rail) + 24px); right: 24px; bottom: 20px; max-width: 760px; } }
 @media (min-width: 1180px) { .savebar { position: static; max-width: none; margin-top: 0; } }
 .view-reg { padding-bottom: 84px; }

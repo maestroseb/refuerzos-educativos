@@ -43,7 +43,7 @@ function tarjetaRegistro(r) {
     (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</button>';
   return '<button class="entry" data-reg="' + esc(r.id) + '" style="--c:' + colorMateria(r.materia) + '">' +
     '<div class="who">' + esc(aluIds(r).map(nombreAlu).join(', ') || r.alumnos_txt) + '</div>' +
-    '<div class="meta"><span class="tag" style="--c:' + colorMateria(r.materia) + '">' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) +
+    '<div class="meta">' + (r._pend ? '<span class="pend">Guardando…</span>' : '') + '<span class="tag" style="--c:' + colorMateria(r.materia) + '">' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) +
     '<span>' + esc(nombreGrupo(r.grupo_id)) + '</span><span class="num">' + esc(t ? t.hora_inicio : '') + '</span><span>' + esc(nombreDocId(r.docente_id)) + '</span></div>' +
     (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</button>';
 }
@@ -58,7 +58,7 @@ function detalleRegistro(id) {
     '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><span class="tag" style="--c:' + colorMateria(r.materia) + ';font-size:14px">' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) + '<span class="muted" style="font-size:13.5px">' + esc(NIVELES[+r.aprovechamiento] || 'Sin valorar') + '</span></div>') +
     '<p style="white-space:pre-line;margin:0;font-size:16px;line-height:1.6">' + (r.trabajado ? esc(r.trabajado) : '<span class="muted">Sin descripción.</span>') + '</p>' +
     '<p class="muted" style="font-size:12px;margin:0">Registrado ' + esc(String(r.creado || '').replace('T', ' ').slice(0, 16)) + (r.actualizado && r.actualizado !== r.creado ? ' · editado ' + esc(String(r.actualizado).replace('T', ' ').slice(0, 16)) : '') + '</p></div>' +
-    (puedoEditar(r) ? '<div class="sheet-foot"><button class="btn danger" id="del">Borrar</button><button class="btn primary" id="edit">' + IC.edit + 'Editar</button></div>' : ''));
+    (r._pend ? '<p class="muted" style="font-size:13px;margin:16px 0 0">Guardándose en la hoja… En un momento podrás editarlo o borrarlo.</p>' : puedoEditar(r) ? '<div class="sheet-foot"><button class="btn danger" id="del">Borrar</button><button class="btn primary" id="edit">' + IC.edit + 'Editar</button></div>' : ''));
   inn.querySelectorAll('[data-ficha]').forEach(b => b.onclick = () => fichaAlumno(b.dataset.ficha));
   const e = $('#edit', inn);
   if (e) e.onclick = () => { cerrarHoja(); ir('registrar', { editar: r }); };

@@ -337,27 +337,36 @@ function pintarSavebar() {
   if (!sb) return;
   const no = f.estado === 'no_realizada';
   const falta = no ? (!f.motivo ? 'Indica el motivo' : '') : !f.alumnos.length ? 'Selecciona alumnado' : !f.materia ? 'Elige la materia' : !f.estrellas ? 'Valora el aprovechamiento' : '';
+  // La barra solo aparece cuando ya hay algo escrito (o, si no se realizó, con el motivo elegido).
+  const visible = !!f.id || (no ? !!f.motivo : !!String(f.trabajado || '').trim());
+  if (!visible) { sb.hidden = true; return; }
+  if (sb.hidden) { sb.hidden = false; sb.classList.remove('entra'); void sb.offsetWidth; sb.classList.add('entra'); }
   const t = S.idx.tramo[f.tramo_id];
   sb.innerHTML = '<div class="sum"><b>' + esc(no ? 'Sesión no realizada' : f.alumnos.length ? f.alumnos.map(i => primerNombre(nombreAlu(i))).join(', ') : 'Nueva sesión') + '</b><span>' + esc(falta || (relativa(f.fecha) + ' · ' + (t ? t.hora_inicio : '') + ' · ' + (no ? f.motivo : f.materia))) + '</span></div>' +
     '<button class="btn" id="guardar"' + (falta ? ' disabled' : '') + '>' + (f.id ? 'Actualizar' : 'Guardar') + '</button>';
   $('#guardar').onclick = guardarSesion;
 }
 
+/* Guardado optimista: la sesión aparece ya como registrada, el formulario
+   queda libre para la siguiente y el envío a la hoja sigue en segundo plano
+   (cola en js_nucleo, que reintenta si falla la conexión). */
 function guardarSesion() {
-  const f = S.f, btn = $('#guardar');
-  btn.classList.add('saving'); btn.textContent = 'Guardando…';
-  api('guardarRegistro', { id: f.id, fecha: f.fecha, tramo_id: f.tramo_id, grupo_id: f.grupo_id, alumno_ids: f.alumnos, materia: f.materia, trabajado: f.trabajado.trim(), aprovechamiento: f.estrellas, docente_id: f.docente_id || S.actor, estado: f.estado, motivo: f.motivo })
-    .then(r => {
-      const i = S.d.registros.findIndex(x => x.id === r.id);
-      if (i >= 0) S.d.registros[i] = r; else S.d.registros.push(r);
-      indexar();
-      LS.set('borrador', null);
-      sello(f.id ? 'Actualizado' : f.estado === 'no_realizada' ? 'Anotado' : '¡Registrado!');
-      S.f = nuevoForm(f.fecha, f.tramo_id); S.f._actor = S.actor;
-      S.f.alumnos = []; S.f.extra = [];
-      ir('registrar', { keepScroll: true });
-    })
-    .catch(e => { fallo(e); pintarSavebar(); });
+  const f = S.f;
+  const prev = f.id ? S.d.registros.find(x => x.id === f.id) : null;
+  const p = { id: f.id || nuevoIdLocal(), nuevo: !f.id || !!(prev && prev._pend), fecha: f.fecha, tramo_id: f.tramo_id, grupo_id: f.grupo_id,
+    alumno_ids: f.alumnos.slice(), materia: f.estado === 'no_realizada' ? '' : f.materia, trabajado: f.trabajado.trim(),
+    aprovechamiento: f.estado === 'no_realizada' ? 0 : f.estrellas, docente_id: f.docente_id || S.actor, estado: f.estado, motivo: f.estado === 'no_realizada' ? f.motivo : '' };
+  const local = Object.assign({}, prev || {}, p, { alumno_ids: p.alumno_ids.join(','), dia: diaDe(p.fecha), creado: prev ? prev.creado : ahoraIsoLocal(), _pend: true });
+  delete local.nuevo;
+  const i = S.d.registros.findIndex(x => x.id === p.id);
+  if (i >= 0) S.d.registros[i] = local; else S.d.registros.push(local);
+  indexar();
+  encolar(p, prev);
+  LS.set('borrador', null);
+  sello(f.id ? 'Actualizado' : f.estado === 'no_realizada' ? 'Anotado' : '¡Registrado!');
+  S.f = nuevoForm(f.fecha, f.tramo_id); S.f._actor = S.actor;
+  S.f.alumnos = []; S.f.extra = [];
+  ir('registrar', { keepScroll: true });
 }
 
 /* ---------- Añadir alumno que no sale por defecto ---------- */
