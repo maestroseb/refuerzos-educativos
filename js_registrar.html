@@ -181,10 +181,10 @@ function pintarSesion() {
     '<div class="days"><button class="arrow" data-sem="-7" aria-label="Semana anterior">' + IC.left + '</button>' + dias +
     '<button class="arrow" data-sem="7" aria-label="Semana siguiente"' + (sumaDias(lunes, 7) > hoy ? ' disabled style="opacity:.3"' : '') + '>' + IC.right + '</button></div>' +
     '<input type="date" id="fechaIn" class="sr" max="' + hoy + '" value="' + f.fecha + '" tabindex="-1" aria-hidden="true">' +
-    '<div class="field-label" style="margin-top:20px"><span>Tramo</span><span class="hint">' + (franjas.length ? 'Marcados: tus refuerzos' : 'Sin refuerzos este día') + '</span></div>' +
+    '<div class="field-label mt"><span>Tramo</span><span class="hint">' + (franjas.length ? 'Marcados: tus refuerzos' : 'Sin refuerzos este día') + '</span></div>' +
     '<div class="tramos" id="tramos" role="group" aria-label="Tramo horario">' + tramos + '</div>' +
     '<div class="divider"></div>' + ctx + listaGrupos +
-    '<div class="field-label" style="margin-top:20px"><span>Alumnado</span><span class="hint" id="aluCount">' + resumenAlu() + '</span></div>' +
+    '<div class="field-label mt"><span>Alumnado</span><span class="hint" id="aluCount">' + resumenAlu() + '</span></div>' +
     '<div class="pills" role="group" aria-label="Alumnado">' + (pills || '<span class="muted" style="font-size:14px;padding:8px 0">' + (g ? 'No hay alumnado de refuerzo en este grupo todavía.' : 'Elige primero el grupo.') + '</span>') +
     '<button class="pill ghost" id="addAlu">' + IC.plus + 'Añadir</button></div>' +
     (f.sugeridos && f.sugeridos.length && !f.id ? '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Preseleccionado el alumnado de tu última sesión en esta franja.</p>' : '');
@@ -249,14 +249,14 @@ function pintarContenido() {
   const no = f.estado === 'no_realizada';
   const estado = '<div class="field-label"><span>Sesión</span></div><div class="seg seg-estado" id="estadoSeg" role="group" aria-label="¿Se realizó la sesión?">' +
     '<button data-estado="realizada" aria-pressed="' + !no + '">Realizada</button><button data-estado="no_realizada" aria-pressed="' + no + '">No se pudo realizar</button></div>';
-  const motivos = '<div class="field-label" style="margin-top:22px"><span>Motivo</span></div><div class="pills" role="group" aria-label="Motivo">' +
+  const motivos = '<div class="field-label mt"><span>Motivo</span></div><div class="pills" role="group" aria-label="Motivo">' +
     (S.d.motivos || []).map(m => '<button class="pill sm" data-mot="' + esc(m) + '" aria-pressed="' + (f.motivo === m) + '"><span class="tick">' + IC.check + '</span>' + esc(m) + '</button>').join('') + '</div>';
   c.innerHTML = estado +
-    (no ? motivos : '<div class="field-label" style="margin-top:22px"><span>Materia</span></div><div class="pills" role="group" aria-label="Materia">' + mats + '</div>') +
-    '<div class="field-label" style="margin-top:22px"><label for="trab">' + (no ? 'Observaciones' : 'Lo trabajado') + '</label><span class="hint">' + (no ? 'Opcional' : 'Una sesión, un texto') + '</span></div>' +
+    (no ? motivos : '<div class="field-label mt"><span>Materia</span></div><div class="pills" role="group" aria-label="Materia">' + mats + '</div>') +
+    '<div class="field-label mt"><label for="trab">' + (no ? 'Observaciones' : 'Lo trabajado') + '</label><span class="hint">' + (no ? 'Opcional' : 'Una sesión, un texto') + '</span></div>' +
     '<textarea class="textarea" id="trab" placeholder="' + (no ? 'p. ej. Sustituyendo en 2ºB por ausencia de la tutora' : 'Qué habéis trabajado, cómo ha ido, dificultades, próximos pasos…') + '" maxlength="5000">' + esc(f.trabajado) + '</textarea>' +
     (no ? '' : '<div class="quick" id="quick"></div>' +
-    '<div class="field-label" style="margin-top:22px"><span>Aprovechamiento</span></div>' +
+    '<div class="field-label mt"><span>Aprovechamiento</span></div>' +
     '<div class="stars" role="radiogroup" aria-label="Aprovechamiento de la sesión">' + stars + '<span class="stars-label" id="starsLbl">' + (f.estrellas ? NIVELES[f.estrellas] : '') + '</span></div>');
   c.querySelectorAll('[data-estado]').forEach(b => b.onclick = () => {
     S.f.estado = b.dataset.estado;
@@ -274,7 +274,7 @@ function pintarContenido() {
     pintarQuick(); pintarSavebar(); guardarBorrador();
   });
   const ta = $('#trab');
-  const auto = () => { ta.style.height = 'auto'; ta.style.height = Math.min(Math.max(132, ta.scrollHeight + 2), 420) + 'px'; };
+  const auto = () => { ta.style.height = 'auto'; ta.style.height = Math.min(Math.max(parseInt(getComputedStyle(ta).minHeight) || 132, ta.scrollHeight + 2), 420) + 'px'; };
   ta.oninput = () => { S.f.trabajado = ta.value; auto(); pintarSavebar(); guardarBorrador(); };
   requestAnimationFrame(auto);
   c.querySelectorAll('[data-star]').forEach(b => {
