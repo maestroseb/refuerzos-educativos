@@ -21,7 +21,8 @@ const ESQUEMA = {
   [HOJAS.CONFIG]:    ['clave', 'valor'],
   [HOJAS.REGISTROS]: ['id', 'fecha', 'dia', 'tramo_id', 'docente_id', 'grupo_id',
                       'alumno_ids', 'materia', 'trabajado', 'aprovechamiento',
-                      'alumnos_txt', 'docente_txt', 'email', 'creado', 'actualizado'],
+                      'alumnos_txt', 'docente_txt', 'email', 'creado', 'actualizado',
+                      'estado', 'motivo'],
   [HOJAS.ALUMNADO]:  ['id', 'nombre', 'grupo_id', 'activo', 'notas', 'creado_por'],
   [HOJAS.DOCENTES]:  ['id', 'nombre_corto', 'nombre_completo', 'email',
                       'sustituto', 'sustituto_email', 'es_admin', 'activo', 'origen'],
@@ -32,3 +33,5 @@ const ESQUEMA = {
 };
 
 const DIAS = ['L', 'M', 'X', 'J', 'V'];
+// Motivos por los que un refuerzo previsto no se lleva a cabo.
+const MOTIVOS_DEF = ['Sustitución', 'Ausencia del alumnado', 'Actividad del centro', 'Otro'];

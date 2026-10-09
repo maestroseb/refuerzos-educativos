@@ -22,6 +22,11 @@ El horario de refuerzos se toma de la **hoja madre**, que es la base de datos de
   - Se muestran las sesiones anteriores del alumnado elegido y unas
     sugerencias de texto según la materia.
   - Lo que no se ha guardado queda como borrador en el navegador.
+  - **Sesiones no realizadas.** Si el refuerzo no pudo hacerse, se registra
+    como «No se pudo realizar» indicando el motivo: sustitución, ausencia del
+    alumnado, actividad del centro u otro. La app consulta las
+    **sustituciones de la hoja madre**: si en ese tramo el docente estaba
+    sustituyendo, lo avisa y lo deja marcado; basta con guardar.
 - **Diario.** Recoge todas las sesiones del centro, que puede ver todo el
   profesorado. Se puede filtrar por periodo, grupo, alumno o alumna, materia y
   docente, buscar texto y exportar a CSV. Cada docente edita y borra sus propios
@@ -62,8 +67,18 @@ estas pestañas: `Registros`, `Alumnado`, `Docentes`, `Horarios`, `Tramos`,
 - Franjas de refuerzo: son las filas de `_Ocupaciones` con `tipo = localizacion`
   cuyo rol, en `_RolesEspeciales`, se llama «Refuerzo». El grupo que se refuerza
   es `grupo_destino_id`.
+- `_Sustituciones`: se leen en directo, con una caché de 5 minutos, para
+  avisar de los refuerzos perdidos por sustitución.
 - Al sincronizar no se tocan los docentes creados a mano ni los horarios
-  editados en Ajustes.
+  editados en Ajustes. Tampoco se pierden los datos que la hoja madre no trae,
+  como el sustituto o la marca de administración.
+
+### Seguridad
+
+- Las funciones auxiliares del servidor terminan en `_`. Así son privadas en
+  Apps Script y no se pueden llamar desde el navegador.
+- Solo usa la app quien figura en `Docentes`, por su email o el de su sustituto.
+- Cada docente edita sus propios registros. La administración puede editarlo todo.
 
 ## Despliegue
 

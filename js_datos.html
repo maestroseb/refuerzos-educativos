@@ -36,8 +36,9 @@ const fmt1 = n => n.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumF
 
 function pintarDatos() {
   const c = $('#dBody');
-  const regs = filtrar(S.d.registros);
-  if (!regs.length) { c.innerHTML = '<div class="empty">' + artVacio() + '<h2 class="h2">Sin datos para mostrar</h2><p>' + (S.d.registros.length ? 'Amplía el periodo o limpia los filtros.' : 'Cuando haya sesiones registradas verás aquí su evolución.') + '</p></div>'; return; }
+  const todos = filtrar(S.d.registros);
+  const regs = hechas(todos), noRe = todos.filter(noHecha);
+  if (!todos.length) { c.innerHTML = '<div class="empty">' + artVacio() + '<h2 class="h2">Sin datos para mostrar</h2><p>' + (S.d.registros.length ? 'Amplía el periodo o limpia los filtros.' : 'Cuando haya sesiones registradas verás aquí su evolución.') + '</p></div>'; return; }
   const [a, b] = rangoEfectivo(regs);
   const valorados = regs.filter(r => +r.aprovechamiento > 0);
   const alus = new Set(); regs.forEach(r => aluIds(r).forEach(i => alus.add(i)));
@@ -51,12 +52,13 @@ function pintarDatos() {
     kpi('Sesiones', regs.length, '', regs.length === 1 ? 'registrada' : 'registradas') +
     kpi('Alumnado', alus.size, '', 'atendido') +
     kpi('Aprovechamiento', valorados.length ? fmt1(media(valorados.map(r => +r.aprovechamiento))) : '—', valorados.length ? '/5' : '', valorados.length ? miniEstrellas(Math.round(media(valorados.map(r => +r.aprovechamiento)))) : 'sin valorar') +
-    kpi('Cumplimiento', cumpl == null ? '—' : cumpl, cumpl == null ? '' : '%', cumpl == null ? 'sin filtros de alumnado' : sesionesUnicas + ' de ' + prev + ' previstas') +
+    kpi('Cumplimiento', cumpl == null ? '—' : cumpl, cumpl == null ? '' : '%', (cumpl == null ? 'sin filtros de alumnado' : sesionesUnicas + ' de ' + prev + ' previstas') + (noRe.length ? '<br>' + noRe.length + ' no realizadas' : '')) +
     '</div>' +
     '<div class="charts"><section class="card chart-card"><h3>Sesiones por semana</h3><p class="sub">Por materia</p><div id="chSem"></div></section>' +
     '<section class="card chart-card"><h3>Reparto por materia</h3><p class="sub">Sesiones y aprovechamiento medio</p><div id="chMat"></div></section>' +
     '<section class="card chart-card"><h3>Aprovechamiento</h3><p class="sub">Media semanal (1 a 5)</p><div id="chApr"></div></section>' +
-    '<section class="card chart-card"><h3>Cuándo se refuerza</h3><p class="sub">Sesiones por día y tramo</p><div id="chHeat"></div></section></div>' +
+    '<section class="card chart-card"><h3>Cuándo se refuerza</h3><p class="sub">Sesiones por día y tramo</p><div id="chHeat"></div></section>' +
+    (noRe.length ? '<section class="card chart-card"><h3>Sesiones no realizadas</h3><p class="sub">' + noRe.length + ' en el periodo · por motivo y docente</p><div id="chNo"></div></section>' : '') + '</div>' +
     '<section class="card" style="margin-top:14px"><div class="field-label"><span>Alumnado</span><span class="hint">Toca para ver su ficha</span></div><div class="table-wrap" id="tAlu"></div></section>' +
     (F.quien === 'todos' && !F.docente ? '<section class="card" style="margin-top:14px"><div class="field-label"><span>Profesorado</span><span class="hint">Previstas según horario, sin descontar festivos</span></div><div class="table-wrap" id="tDoc"></div></section>' : '');
 
@@ -64,9 +66,21 @@ function pintarDatos() {
   graficoMaterias($('#chMat'), regs);
   graficoAprovechamiento($('#chApr'), regs);
   mapaCalor($('#chHeat'), regs);
+  if (noRe.length) graficoNoRealizadas($('#chNo'), noRe);
   tablaAlumnado($('#tAlu'), regs);
   if ($('#tDoc')) tablaDocentes($('#tDoc'), regs, a, b);
 }
+/* Refuerzos perdidos: barras por motivo y lista de docentes más afectados. */
+function graficoNoRealizadas(cont, noRe) {
+  const cuenta = k => { const o = {}; noRe.forEach(r => { const v = k(r); o[v] = (o[v] || 0) + 1; }); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+  const mot = cuenta(r => r.motivo || 'Sin motivo'), docs = cuenta(r => nombreDocId(r.docente_id)).slice(0, 5);
+  const max = Math.max(1, ...mot.map(m => m[1]));
+  cont.innerHTML = '<div style="display:grid;gap:14px">' + mot.map(([m, n]) =>
+    '<div><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px"><b style="font-weight:600">' + esc(m) + '</b><span class="num">' + n + ' <span class="muted">· ' + Math.round(n / noRe.length * 100) + '%</span></span></div>' +
+    '<div style="height:12px;border-radius:6px;background:var(--seq-0);overflow:hidden"><div style="height:100%;width:' + (n / max * 100) + '%;background:var(--ink-2);border-radius:6px"></div></div></div>').join('') + '</div>' +
+    '<div class="field-label" style="margin:18px 0 6px"><span>Más afectados</span></div><div class="list">' + docs.map(([d, n]) => '<div class="row" style="padding:6px 0"><span class="grow">' + esc(d) + '</span><b class="num">' + n + '</b></div>').join('') + '</div>';
+}
+
 function kpi(t, v, unit, sub) { return '<div class="kpi"><small>' + t + '</small><b>' + v + (unit ? '<sub>' + unit + '</sub>' : '') + '</b><span>' + sub + '</span></div>'; }
 
 /* ---------- Tooltip compartido ---------- */
@@ -228,7 +242,7 @@ function tablaDocentes(cont, regs, a, b) {
 /* ---------- Ficha individual (imprimible) ---------- */
 function fichaAlumno(id) {
   const a = S.idx.alu[id];
-  const regs = S.d.registros.filter(r => aluIds(r).indexOf(id) >= 0);
+  const regs = S.d.registros.filter(r => !noHecha(r) && aluIds(r).indexOf(id) >= 0);
   const v = regs.filter(r => +r.aprovechamiento > 0).map(r => +r.aprovechamiento);
   const mats = {}; regs.forEach(r => mats[r.materia] = (mats[r.materia] || 0) + 1);
   const docs = new Set(regs.map(r => r.docente_id));

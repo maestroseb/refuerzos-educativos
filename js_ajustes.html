@@ -96,17 +96,24 @@ function ajHorarios(c) {
     c.querySelectorAll('.cell').forEach(b => b.onclick = () => editarCelda(b.dataset.d, b.dataset.t));
   };
   const editarCelda = (dia, tramo) => {
+    // Cada semana (todas / A / B) se edita por separado para no mezclar filas.
     const actual = fr.filter(f => f.dia === dia && f.tramo_id === tramo);
-    const sel = new Set(); actual.forEach(f => f.grupo_ids.forEach(i => sel.add(i)));
     let sem = actual[0] ? actual[0].semana || '' : '';
+    let sel = new Set();
+    const cargaSel = () => { sel = new Set(); actual.filter(f => (f.semana || '') === sem).forEach(f => f.grupo_ids.forEach(i => sel.add(i))); };
+    cargaSel();
     const inn = abrirHoja(cabHoja(esc(DIA_LARGO[dia] + ' · ' + etiquetaTramo(S.idx.tramo[tramo])), 'Grupos que refuerza ' + esc(nombreDocId(ajDoc))) +
       '<div class="pills" id="cg">' + S.d.grupos.map(g => '<button class="pill sm" data-g="' + esc(g.id) + '" aria-pressed="' + sel.has(g.id) + '"><span class="tick">' + IC.check + '</span>' + esc(g.nombre_corto) + '</button>').join('') + '</div>' +
       '<div style="margin-top:16px"><span class="lbl">Semanas</span><div class="seg" id="cs">' + [['', 'Todas'], ['A', 'Solo A'], ['B', 'Solo B']].map(([k, t]) => '<button data-s="' + k + '" aria-pressed="' + (sem === k) + '">' + t + '</button>').join('') + '</div></div>' +
       '<div class="sheet-foot"><button class="btn" id="cClear" style="margin-right:auto">Vaciar</button><button class="btn primary" id="cOk">Aplicar</button></div>');
     inn.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { const id = b.dataset.g; sel.has(id) ? sel.delete(id) : sel.add(id); b.setAttribute('aria-pressed', sel.has(id)); });
-    inn.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { sem = b.dataset.s; inn.querySelectorAll('[data-s]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+    inn.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+      sem = b.dataset.s; cargaSel();
+      inn.querySelectorAll('[data-s]').forEach(x => x.setAttribute('aria-pressed', x === b));
+      inn.querySelectorAll('[data-g]').forEach(x => x.setAttribute('aria-pressed', sel.has(x.dataset.g)));
+    });
     const aplica = vaciar => {
-      fr = fr.filter(f => !(f.dia === dia && f.tramo_id === tramo));
+      fr = fr.filter(f => !(f.dia === dia && f.tramo_id === tramo && (vaciar || (f.semana || '') === sem)));
       if (!vaciar && sel.size) fr.push({ dia, tramo_id: tramo, grupo_ids: Array.from(sel), semana: sem });
       cerrarHoja(); pinta(); $('#hSave').disabled = false;
     };

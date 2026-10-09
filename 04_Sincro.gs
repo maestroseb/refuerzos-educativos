@@ -8,16 +8,22 @@
  */
 
 function sincronizarMadre(idOUrl) {
-  _exigirAdmin();
-  if (idOUrl) _setConfig('MADRE_ID', _idDeUrl(idOUrl));
-  return _conCandado(_sincronizar);
+  exigirAdmin_();
+  if (idOUrl) setConfig_('MADRE_ID', idDeUrl_(idOUrl));
+  return conCandado_(sincronizar_);
 }
 
-/** Ejecutada por el activador diario (sin usuario: no exige admin). */
-function sincroDiaria() { _conCandado(_sincronizar); }
+/** Ejecutada por el activador diario. Al ser pública, si no la lanza un
+ *  activador real del proyecto exige administración. */
+function sincroDiaria(e) {
+  const uid = e && e.triggerUid;
+  const esActivador = !!uid && ScriptApp.getProjectTriggers().some(function(t) { return t.getUniqueId() === String(uid); });
+  if (!esActivador) exigirAdmin_();
+  conCandado_(sincronizar_);
+}
 
-function _sincronizar() {
-  const id = _config().MADRE_ID;
+function sincronizar_() {
+  const id = config_().MADRE_ID;
   if (!id) throw new Error('Falta el enlace de la hoja madre.');
   let madre;
   try { madre = SpreadsheetApp.openById(id); }
@@ -51,29 +57,31 @@ function _sincronizar() {
   const roles = leer('_RolesEspeciales');
   const ocup = leer('_Ocupaciones');
   const semanas = leer('_SemanasAlternas');
-  if (!tramos.length && !ocup.length) throw new Error('La hoja no parece la hoja madre (no encuentro _Tramos ni _Ocupaciones).');
+  if (!tramos.length || !grupos.length || !docentes.length) throw new Error('La hoja no parece la hoja madre: faltan tramos, grupos o docentes (no se ha cambiado nada).');
 
-  _reemplazar(HOJAS.TRAMOS, tramos.map(function(t) {
+  reemplazar_(HOJAS.TRAMOS, tramos.map(function(t) {
     return { id: s(t.id), orden: s(t.orden), hora_inicio: hhmm(t.hora_inicio), hora_fin: hhmm(t.hora_fin),
-      etiqueta: s(t.etiqueta), es_recreo: _si(t.es_recreo) ? 'true' : 'false' };
+      etiqueta: s(t.etiqueta), es_recreo: si_(t.es_recreo) ? 'true' : 'false' };
   }));
-  _reemplazar(HOJAS.GRUPOS, grupos.map(function(g) {
+  reemplazar_(HOJAS.GRUPOS, grupos.map(function(g) {
     return { id: s(g.id), nombre_corto: s(g.nombre_corto), nombre_largo: s(g.nombre_largo), orden: s(g.orden) };
   }));
-  _reemplazar(HOJAS.SEMANAS, semanas.map(function(w) {
+  reemplazar_(HOJAS.SEMANAS, semanas.map(function(w) {
     return { id: s(w.id), fecha_inicio: fecha(w.fecha_inicio), fecha_fin: fecha(w.fecha_fin), tipo: s(w.tipo).toUpperCase() };
   }));
 
   // Docentes: actualiza los de la madre conservando es_admin; no toca los manuales.
   const locales = {};
-  _filas(HOJAS.DOCENTES).forEach(function(d) { locales[d.id] = d; });
-  const deMadre = docentes.filter(function(d) { return d.activo === '' || _si(d.activo); }).map(function(d) {
-    const loc = locales[s(d.id)];
+  filas_(HOJAS.DOCENTES).forEach(function(d) { locales[d.id] = d; });
+  const deMadre = docentes.filter(function(d) { return d.activo == null || d.activo === '' || si_(d.activo); }).map(function(d) {
+    const loc = locales[s(d.id)] || {};
+    // Lo que la madre no trae se conserva de lo editado aquí.
     return { id: s(d.id), nombre_corto: s(d.nombre_corto), nombre_completo: s(d.nombre_completo) || s(d.nombre_corto),
-      email: s(d.email).toLowerCase(), sustituto: s(d.sustituto), sustituto_email: s(d.sustituto_email).toLowerCase(),
-      es_admin: loc ? loc.es_admin : 'false', activo: 'true', origen: 'madre' };
+      email: s(d.email).toLowerCase() || loc.email || '',
+      sustituto: s(d.sustituto) || loc.sustituto || '', sustituto_email: s(d.sustituto_email).toLowerCase() || loc.sustituto_email || '',
+      es_admin: loc.es_admin || 'false', activo: loc.activo || 'true', origen: 'madre' };
   });
-  _reemplazar(HOJAS.DOCENTES, deMadre, function(d) { return d.origen !== 'manual'; });
+  reemplazar_(HOJAS.DOCENTES, deMadre, function(d) { return d.origen !== 'manual'; });
 
   // Franjas de refuerzo.
   const rolById = {};
@@ -83,39 +91,73 @@ function _sincronizar() {
     const t = r ? s(r.nombre) + ' ' + s(r.nombre_largo) : s(o.notas);
     return /^\s*ref|refuerzo/i.test(t);
   };
-  const c = _config();
+  const c = config_();
   const franjas = ocup.filter(function(o) {
     return s(o.tipo) === 'localizacion' && s(o.grupo_destino_id) && esRefuerzo(o) &&
       c['HORARIO_MANUAL_' + s(o.docente_id)] !== 'true';
   }).map(function(o) {
-    return { id: s(o.id), docente_id: s(o.docente_id), dia: _diaCanon(o.dia), tramo_id: s(o.tramo_id),
+    return { id: s(o.id), docente_id: s(o.docente_id), dia: diaCanon_(o.dia), tramo_id: s(o.tramo_id),
       grupo_ids: s(o.grupo_destino_id).replace(/\s+/g, ''), semana: s(o.semana).toUpperCase(), origen: 'madre' };
   });
-  _reemplazar(HOJAS.HORARIOS, franjas, function(h) { return h.origen === 'madre'; });
+  reemplazar_(HOJAS.HORARIOS, franjas, function(h) { return h.origen === 'madre'; });
 
   const nombre = leer('_Centro')[0];
-  if (nombre && !c.CENTRO) _setConfig('CENTRO', s(nombre.nombre));
-  _setConfig('ULTIMA_SINCRO', _ahoraIso());
+  if (nombre && !c.CENTRO) setConfig_('CENTRO', s(nombre.nombre));
+  setConfig_('ULTIMA_SINCRO', ahoraIso_());
+  try { CacheService.getScriptCache().remove('SUST_' + id); } catch (e) {}
   return { tramos: tramos.length, grupos: grupos.length, docentes: deMadre.length, franjas: franjas.length };
 }
 
-function _diaCanon(d) {
+function diaCanon_(d) {
   const t = String(d || '').trim().toUpperCase();
   if (t.indexOf('MI') === 0) return 'X';
   return t.charAt(0);
 }
 
 function activarSincroDiaria(activar) {
-  _exigirAdmin();
+  exigirAdmin_();
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === 'sincroDiaria') ScriptApp.deleteTrigger(t);
   });
   if (activar) ScriptApp.newTrigger('sincroDiaria').timeBased().everyDays(1).atHour(6).create();
-  return _sincroDiariaActiva();
+  return sincroDiariaActiva_();
 }
 
-function _sincroDiariaActiva() {
+function sincroDiariaActiva_() {
   try {
     return ScriptApp.getProjectTriggers().some(function(t) { return t.getHandlerFunction() === 'sincroDiaria'; });
   } catch (e) { return false; }
+}
+
+/**
+ * Sustituciones de la hoja madre (últimos 120 días y próximos 7), leídas en
+ * directo y cacheadas 5 minutos: sirven para avisar de que un refuerzo no
+ * pudo hacerse porque el docente estaba sustituyendo.
+ */
+function sustitucionesMadre_() {
+  const id = config_().MADRE_ID;
+  if (!id) return [];
+  const cache = CacheService.getScriptCache();
+  const enCache = cache.get('SUST_' + id);
+  if (enCache) return JSON.parse(enCache);
+  let out = [];
+  try {
+    const ss = SpreadsheetApp.openById(id);
+    const h = ss.getSheetByName('_Sustituciones');
+    if (h && h.getLastRow() > 1) {
+      const tz = ss.getSpreadsheetTimeZone();
+      const v = h.getRange(1, 1, h.getLastRow(), h.getLastColumn()).getValues();
+      const cab = v[0].map(String), col = function(n) { return cab.indexOf(n); };
+      const cF = col('fecha'), cA = col('docente_ausente_id'), cS = col('docente_sustituto_id'), cT = col('tramo_id'), cG = col('grupo_id');
+      const hoy = new Date();
+      const desde = Utilities.formatDate(new Date(hoy.getTime() - 120 * 864e5), tz, 'yyyy-MM-dd');
+      const hasta = Utilities.formatDate(new Date(hoy.getTime() + 7 * 864e5), tz, 'yyyy-MM-dd');
+      out = v.slice(1).map(function(f) {
+        const fe = f[cF] instanceof Date ? Utilities.formatDate(f[cF], tz, 'yyyy-MM-dd') : String(f[cF] || '').slice(0, 10);
+        return { fecha: fe, ausente_id: String(f[cA] || ''), sustituto_id: String(f[cS] || ''), tramo_id: String(f[cT] || ''), grupo_id: cG >= 0 ? String(f[cG] || '') : '' };
+      }).filter(function(x) { return x.fecha >= desde && x.fecha <= hasta && x.sustituto_id && x.tramo_id; });
+    }
+  } catch (e) { out = []; }
+  try { cache.put('SUST_' + id, JSON.stringify(out), 300); } catch (e) {}
+  return out;
 }

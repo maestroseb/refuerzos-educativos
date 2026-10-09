@@ -31,7 +31,10 @@
   // Una sesión de la semana pasada en la misma franja (para preselección)
   registros.push({ id: 'rprev', fecha: '2026-10-01', dia: 'J', tramo_id: 't3', docente_id: 'd0', grupo_id: 'g5', alumno_ids: alumnado.filter(a => a.grupo_id === 'g5').slice(0, 2).map(a => a.id).join(','), materia: 'Matemáticas', trabajado: 'Fracciones equivalentes con tiras de papel. Han entendido la idea de mitad.', aprovechamiento: 4, creado: '2026-10-01T11:50:00' });
   registros.push({ id: 'rhoy', fecha: '2026-10-08', dia: 'J', tramo_id: 't2', docente_id: 'd0', grupo_id: 'g4', alumno_ids: alumnado.filter(a => a.grupo_id === 'g4').slice(0, 1).map(a => a.id).join(','), materia: 'Lengua', trabajado: 'Lectura comprensiva.', aprovechamiento: 3, creado: '2026-10-08T10:58:00' });
-  const DB = { yo: { email: 'doc0@g.educaand.es', docenteId: 'd0', comoSustituto: false, admin: true, elegible: false }, centro: 'CEIP Carlos III', materias: ['Lengua', 'Matemáticas', 'Otros'], madreId: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789', ultimaSincro: '2026-10-08T06:00:12', sincroDiaria: true, bdUrl: '#', tramos, grupos, semanas: [], docentes, horarios, alumnado, registros };
+  horarios.push({ id: 'ha4', docente_id: 'd0', dia: 'J', tramo_id: 't1', grupo_ids: 'g6', semana: '', origen: 'madre' });
+  for (let k = 0; k < 14; k++) { const r = registros[k * 9]; if (r) { r.estado = 'no_realizada'; r.motivo = k % 3 ? 'Sustitución' : 'Actividad del centro'; r.materia = ''; r.aprovechamiento = 0; r.trabajado = k % 3 ? 'Sustituyendo en 2ºA por ausencia del tutor.' : 'Excursión del ciclo.'; } }
+  const sustituciones = [{ fecha: '2026-10-08', ausente_id: 'd3', sustituto_id: 'd0', tramo_id: 't1', grupo_id: 'g2' }];
+  const DB = { yo: { email: 'doc0@g.educaand.es', docenteId: 'd0', comoSustituto: false, admin: true, elegible: false }, centro: 'CEIP Carlos III', materias: ['Lengua', 'Matemáticas', 'Otros'], motivos: ['Sustitución', 'Ausencia del alumnado', 'Actividad del centro', 'Otro'], sustituciones, madreId: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789', ultimaSincro: '2026-10-08T06:00:12', sincroDiaria: true, bdUrl: '#', tramos, grupos, semanas: [], docentes, horarios, alumnado, registros };
   if (window.MOCK_VACIO) { DB.tramos = []; DB.registros = []; DB.horarios = []; }
   const handlers = {
     inicio: () => JSON.parse(JSON.stringify(DB)),

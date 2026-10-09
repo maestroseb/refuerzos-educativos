@@ -105,6 +105,10 @@ function miniEstrellas(n) {
   return h + '</span>';
 }
 const aluIds = r => String(r.alumno_ids || '').split(',').filter(Boolean);
+const noHecha = r => r.estado === 'no_realizada';
+const hechas = regs => regs.filter(r => !noHecha(r));
+/* Sustitución (según la hoja madre) que hizo un docente en esa fecha y tramo. */
+const sustitucionEn = (docId, fecha, tramo) => (S.d.sustituciones || []).find(x => x.sustituto_id === docId && x.fecha === fecha && x.tramo_id === tramo);
 const puedoEditar = r => S.d.yo.admin || r.docente_id === S.actor;
 
 /* ---------- Navegación ---------- */
@@ -233,6 +237,7 @@ function filtrar(regs) {
     if (F.grupo && r.grupo_id !== F.grupo && !aluIds(r).some(i => S.idx.alu[i] && S.idx.alu[i].grupo_id === F.grupo)) return false;
     if (F.alumno && aluIds(r).indexOf(F.alumno) < 0) return false;
     if (F.materia && r.materia !== F.materia) return false;
+    if (F.estado === 'no' && !noHecha(r)) return false;
     if (q && (r.trabajado + ' ' + r.alumnos_txt + ' ' + aluIds(r).map(nombreAlu).join(' ') + ' ' + nombreDocId(r.docente_id)).toLowerCase().indexOf(q) < 0) return false;
     return true;
   });
@@ -247,6 +252,7 @@ function barraFiltros(onChange, conBusqueda) {
     '<select class="select sm" data-f="grupo" aria-label="Grupo">' + opt('', 'Todos los grupos', F.grupo) + S.d.grupos.map(g => opt(g.id, g.nombre_corto, F.grupo)).join('') + '</select>' +
     '<select class="select sm" data-f="alumno" aria-label="Alumno o alumna">' + opt('', 'Todo el alumnado', F.alumno) + alus.map(a => opt(a.id, a.nombre, F.alumno)).join('') + '</select>' +
     '<select class="select sm" data-f="materia" aria-label="Materia">' + opt('', 'Todas las materias', F.materia) + S.d.materias.map(m => opt(m, m, F.materia)).join('') + '</select>' +
+    '<select class="select sm" data-f="estado" aria-label="Estado">' + opt('', 'Realizadas y no', F.estado || '') + opt('no', 'Solo no realizadas', F.estado || '') + '</select>' +
     (F.quien === 'todos' ? '<select class="select sm" data-f="docente" aria-label="Docente">' + opt('', 'Todo el profesorado', F.docente) + S.d.docentes.map(x => opt(x.id, nombreDoc(x), F.docente)).join('') + '</select>' : '') +
     (hayFiltros() ? '<button class="btn sm" data-reset>Limpiar</button>' : '') +
     '</div>' +
@@ -260,11 +266,11 @@ function barraFiltros(onChange, conBusqueda) {
   wrap.addEventListener('click', e => {
     const b = e.target.closest('[data-v]');
     if (b) { F.quien = b.dataset.v; if (F.quien === 'mios') F.docente = ''; guardaF(); onChange(true); }
-    if (e.target.closest('[data-reset]')) { Object.assign(F, { quien: 'todos', rango: 'curso', grupo: '', alumno: '', docente: '', materia: '', q: '' }); guardaF(); onChange(true); }
+    if (e.target.closest('[data-reset]')) { Object.assign(F, { quien: 'todos', rango: 'curso', grupo: '', alumno: '', docente: '', materia: '', estado: '', q: '' }); guardaF(); onChange(true); }
   });
   return wrap;
 }
-const hayFiltros = () => F.quien !== 'todos' || F.rango !== 'curso' || F.grupo || F.alumno || F.docente || F.materia || F.q;
+const hayFiltros = () => F.quien !== 'todos' || F.rango !== 'curso' || F.grupo || F.alumno || F.docente || F.materia || F.estado || F.q;
 const guardaF = () => LS.set('filtros', F);
 
 /* ---------- Arranque ---------- */
