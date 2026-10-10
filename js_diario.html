@@ -65,10 +65,8 @@ function detalleRegistro(id) {
   const d = $('#del', inn);
   if (d) d.onclick = async () => {
     if (!(await confirmar('Se borrará este registro de forma permanente.', 'Borrar'))) return;
-    api('borrarRegistro', r.id).then(() => {
-      S.d.registros = S.d.registros.filter(x => x.id !== r.id); indexar(); toast('Registro borrado');
-      if (S.view === 'diario') pintarDiario(); else ir(S.view, { keepScroll: true });
-    }).catch(fallo);
+    hacer('borrarRegistro', [r.id], 'Registro borrado');
+    if (S.view !== 'diario') ir(S.view, { keepScroll: true });
   };
 }
 

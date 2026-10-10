@@ -291,43 +291,100 @@ function barraFiltros(onChange, conBusqueda) {
 const hayFiltros = () => F.quien !== 'todos' || F.rango !== 'curso' || F.grupo || F.alumno || F.docente || F.materia || F.estado || F.q;
 const guardaF = () => LS.set('filtros', F);
 
-/* ---------- Cola de guardado en segundo plano ---------- */
+/* ---------- Cola de guardado en segundo plano ----------
+   Todo cambio se aplica al momento en pantalla (LOCAL) y se envía después,
+   en orden, al servidor. La cola vive en el navegador: si no hay conexión
+   se reintenta sola y, al recargar, lo pendiente se vuelve a aplicar. */
 const COLA = { items: LS.get('cola', []), activa: false, espera: false };
 const nuevoIdLocal = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const ahoraIsoLocal = () => { const d = new Date(); return iso(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
 const esErrorRed = e => /network|http 0|timeout|failed to fetch|conexi/i.test(String(e && e.message || e));
+const usaAlumno = id => S.d.registros.some(r => (',' + r.alumno_ids + ',').indexOf(',' + id + ',') >= 0);
+const upsert = (arr, o) => { const i = arr.findIndex(x => x.id === o.id); if (i >= 0) arr[i] = Object.assign({}, arr[i], o); else arr.push(o); };
+const quita = (k, f) => { S.d[k] = S.d[k].filter(x => !f(x)); };
+/* Efecto inmediato de cada operación sobre S.d (mismas reglas que el servidor). */
+const LOCAL = {
+  guardarAlumno: a => upsert(S.d.alumnado, { id: a.id, nombre: String(a.nombre).trim().replace(/\s+/g, ' '), grupo_id: a.grupo_id || '', notas: a.notas || '', activo: a.activo !== false }),
+  importarAlumnado: (t, g, lista) => lista.forEach(x => upsert(S.d.alumnado, { id: x.id, nombre: x.nombre, grupo_id: g, notas: '', activo: true })),
+  borrarAlumno: id => usaAlumno(id) ? upsert(S.d.alumnado, { id: id, activo: false }) : quita('alumnado', x => x.id === id),
+  guardarDocente: d => upsert(S.d.docentes, Object.assign({ origen: 'manual' }, S.d.docentes.find(x => x.id === d.id) || {}, d, { nombre_corto: String(d.nombre_corto || d.nombre_completo).trim(), nombre_completo: String(d.nombre_completo || d.nombre_corto).trim(), email: String(d.email || '').trim().toLowerCase(), sustituto_email: String(d.sustituto_email || '').trim().toLowerCase() })),
+  borrarDocente: id => { quita('docentes', x => x.id === id); quita('horarios', h => h.docente_id === id); },
+  guardarHorarioDocente: (doc, fr) => { quita('horarios', h => h.docente_id === doc); fr.forEach(f => S.d.horarios.push({ id: f.id, docente_id: doc, dia: f.dia, tramo_id: f.tramo_id, grupo_ids: [].concat(f.grupo_ids).join(','), semana: f.semana || '', origen: 'manual' })); },
+  guardarAjustes: c => { if (c.centro != null) S.d.centro = String(c.centro).trim(); if (c.materias) S.d.materias = c.materias.slice(); },
+  activarSincroDiaria: v => { S.d.sincroDiaria = !!v; },
+  guardarTramo: t => upsert(S.d.tramos, t),
+  borrarTramo: id => quita('tramos', x => x.id === id),
+  guardarGrupo: g => upsert(S.d.grupos, g),
+  borrarGrupo: id => quita('grupos', x => x.id === id),
+  borrarRegistro: id => quita('registros', x => x.id === id)
+};
+/* Lo que devuelve el servidor, cuando corrige o completa lo aplicado. */
+const RESP = {
+  guardarAlumno: a => upsert(S.d.alumnado, a),
+  guardarDocente: d => upsert(S.d.docentes, d),
+  guardarTramo: t => upsert(S.d.tramos, t),
+  guardarGrupo: g => upsert(S.d.grupos, g),
+  importarAlumnado: (ids, it) => { const ok = new Set(ids); quita('alumnado', a => it.args[2].some(x => x.id === a.id) && !ok.has(a.id)); }
+};
+/* Aplica y encola. msg: aviso inmediato; txt: qué era, por si falla. */
+function hacer(fn, args, msg, txt) {
+  LOCAL[fn](...args); indexar();
+  COLA.items.push({ fn: fn, args: args, txt: txt || msg || '' });
+  LS.set('cola', COLA.items);
+  if (msg) toast(msg);
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  refrescarVista(); procesarCola();
+}
 function encolar(p, prev) {
   COLA.items.push({ p: p, prev: prev ? Object.assign({}, prev) : null });
   LS.set('cola', COLA.items);
   pintarCola();
   procesarCola();
 }
+/* Vuelve a aplicar lo pendiente sobre datos recién llegados del servidor. */
+function reaplicarCola(d) {
+  S.d = d;
+  COLA.items.forEach(it => {
+    if (it.fn) { try { LOCAL[it.fn](...it.args); } catch (e) {} return; }
+    const p = it.p, i = d.registros.findIndex(x => x.id === p.id);
+    const local = Object.assign({}, i >= 0 ? d.registros[i] : {}, p, { alumno_ids: p.alumno_ids.join(','), dia: diaDe(p.fecha), _pend: true });
+    delete local.nuevo;
+    if (i >= 0) d.registros[i] = local; else d.registros.push(local);
+  });
+}
 function procesarCola() {
   if (COLA.activa || COLA.espera || !COLA.items.length) return pintarCola();
   COLA.activa = true; pintarCola();
   const it = COLA.items[0];
-  api('guardarRegistro', it.p).then(r => {
+  api(it.fn || 'guardarRegistro', ...(it.fn ? it.args : [it.p])).then(r => {
     COLA.items.shift(); LS.set('cola', COLA.items);
-    // Si hay otra edición del mismo registro en cola, sigue marcado como pendiente.
-    if (COLA.items.some(x => x.p.id === r.id)) r._pend = true;
-    const i = S.d.registros.findIndex(x => x.id === r.id);
-    if (i >= 0) S.d.registros[i] = r; else S.d.registros.push(r);
+    if (it.fn) { if (RESP[it.fn]) RESP[it.fn](r, it); }
+    else {
+      // Si hay otra edición del mismo registro en cola, sigue marcado como pendiente.
+      if (COLA.items.some(x => x.p && x.p.id === r.id)) r._pend = true;
+      upsert(S.d.registros, r);
+      const g = S.d.registros.find(x => x.id === r.id); if (!r._pend) delete g._pend;
+    }
     indexar(); refrescarVista();
     COLA.activa = false; procesarCola();
   }).catch(e => {
     COLA.activa = false;
     if (esErrorRed(e)) {
-      // Sin conexión: se reintenta sola, sin perder nada (la cola está en el navegador).
       COLA.espera = true; pintarCola();
       setTimeout(() => { COLA.espera = false; procesarCola(); }, 10000);
       return;
     }
     COLA.items.shift(); LS.set('cola', COLA.items);
-    if (it.prev) { const i = S.d.registros.findIndex(x => x.id === it.p.id); if (i >= 0) S.d.registros[i] = it.prev; }
-    else S.d.registros = S.d.registros.filter(x => x.id !== it.p.id);
-    indexar(); refrescarVista();
-    LS.set('fallido', it.p);
-    toast('No se guardó la sesión del ' + fechaCorta(it.p.fecha) + ': ' + (e.message || e), 'err', { txt: 'Recuperar', fn: recuperarFallido });
+    if (it.fn) {
+      toast('No se guardó' + (it.txt ? ' «' + it.txt + '»' : '') + ': ' + (e.message || e), 'err');
+      resincronizar();
+    } else {
+      if (it.prev) { const i = S.d.registros.findIndex(x => x.id === it.p.id); if (i >= 0) S.d.registros[i] = it.prev; }
+      else S.d.registros = S.d.registros.filter(x => x.id !== it.p.id);
+      indexar(); refrescarVista();
+      LS.set('fallido', it.p);
+      toast('No se guardó la sesión del ' + fechaCorta(it.p.fecha) + ': ' + (e.message || e), 'err', { txt: 'Recuperar', fn: recuperarFallido });
+    }
     procesarCola();
   });
 }
@@ -343,36 +400,62 @@ function pintarCola() {
   if (!n) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'cola'; el.className = 'cola'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
   el.classList.toggle('off', COLA.espera);
-  el.innerHTML = '<span class="cola-spin" aria-hidden="true"></span>' + (COLA.espera ? 'Sin conexión · ' + n + ' pendiente' + (n > 1 ? 's' : '') + ', reintentando…' : 'Guardando' + (n > 1 ? ' ' + n + ' sesiones' : '') + '…');
+  el.innerHTML = '<span class="cola-spin" aria-hidden="true"></span>' + (COLA.espera ? 'Sin conexión · ' + n + ' pendiente' + (n > 1 ? 's' : '') + ', reintentando…' : 'Guardando' + (n > 1 ? ' (' + n + ')' : '') + '…');
 }
-/* Repinta lo que depende de los registros sin tocar lo que se está escribiendo. */
+/* Repinta lo que depende de los datos sin tocar lo que se está escribiendo. */
 function refrescarVista() {
   if (S.view === 'registrar' && $('#cSesion')) { pintarSesion(); pintarBanner(); pintarTiles(); }
   else if (S.view === 'diario' && $('#dList')) pintarDiario();
+  else if (S.view === 'ajustes' && $('#aBody') && !$('dialog[open]') && !(document.activeElement && document.activeElement.closest('#aBody') && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) pintarAjustes();
 }
 window.addEventListener('beforeunload', e => { if (COLA.items.length) { e.preventDefault(); e.returnValue = ''; } });
 
-/* ---------- Arranque ---------- */
-function arrancar() {
-  api('inicio').then(d => {
-    S.d = d;
-    // Lo que quedó en cola (p. ej. se cerró la pestaña sin conexión) se muestra y se reenvía.
-    COLA.items.forEach(it => {
-      const p = it.p, i = d.registros.findIndex(x => x.id === p.id);
-      const local = Object.assign({}, i >= 0 ? d.registros[i] : {}, p, { alumno_ids: p.alumno_ids.join(','), dia: diaDe(p.fecha), _pend: true });
-      delete local.nuevo;
-      if (i >= 0) d.registros[i] = local; else d.registros.push(local);
-    });
-    indexar();
-    setTimeout(procesarCola, 300);
-    S.actor = d.yo.docenteId || ((d.yo.elegible || d.yo.admin) ? LS.get('actor', '') : '');
-    if (S.actor && !S.idx.doc[S.actor]) S.actor = d.yo.docenteId || '';
-    pintarYo();
-    $('[data-view="ajustes"]').hidden = !d.yo.admin;
-    const v = LS.get('vista', 'registrar');
+/* ---------- Arranque ----------
+   Se pinta al instante con la última copia guardada en el navegador y se
+   actualiza en cuanto responde el servidor. Las sustituciones (hoja madre)
+   llegan aparte para no frenar la carga. */
+function cargarDatos(d) {
+  if (!d.sustituciones) d.sustituciones = (S.d && S.d.sustituciones) || LS.get('sust', []);
+  const previo = S.d;
+  reaplicarCola(d);
+  indexar();
+  S.actor = d.yo.docenteId || ((d.yo.elegible || d.yo.admin) ? LS.get('actor', '') : '');
+  if (S.actor && !S.idx.doc[S.actor]) S.actor = d.yo.docenteId || '';
+  pintarYo();
+  $('[data-view="ajustes"]').hidden = !d.yo.admin;
+  if (!previo || previo.yo.email !== d.yo.email || previo.yo.admin !== d.yo.admin) {
+    const v = previo ? S.view : LS.get('vista', 'registrar');
     ir(v === 'ajustes' && !d.yo.admin ? 'registrar' : (VISTAS[v] ? v : 'registrar'));
-    if (!S.actor && d.docentes.length && (d.yo.elegible || d.yo.admin) && !d.yo.admin) setTimeout(menuUsuario, 400);
+  } else if (S.view === 'registrar' || $('dialog[open]')) refrescarVista();
+  else ir(S.view, { keepScroll: true });
+}
+function llegaSust(s) {
+  LS.set('sust', s); S.d.sustituciones = s;
+  // Si el formulario está sin tocar, se le aplica la sustitución recién conocida.
+  const f = S.f;
+  if (S.view === 'registrar' && f && !f.id && !f.sust && !f.trabajado.trim() && f.estado === 'realizada') {
+    f.sust = sustitucionEn(S.actor, f.fecha, f.tramo_id) || null;
+    if (f.sust && !registrosDe(S.actor, f.fecha, f.tramo_id).length) { f.estado = 'no_realizada'; f.motivo = 'Sustitución'; return ir('registrar', { keepScroll: true }); }
+  }
+  refrescarVista();
+}
+function resincronizar() {
+  return api('inicio').then(d => {
+    LS.set('datos', d); cargarDatos(d);
+    api('sustituciones').then(llegaSust).catch(() => {});
+  }).catch(() => {});
+}
+function arrancar() {
+  const copia = LS.get('datos', null);
+  if (copia && copia.yo) { try { cargarDatos(copia); } catch (e) { S.d = null; } }
+  api('inicio').then(d => {
+    LS.set('datos', d);
+    cargarDatos(d);
+    setTimeout(procesarCola, 300);
+    if (!S.actor && d.docentes.length && d.yo.elegible && !d.yo.admin) setTimeout(menuUsuario, 400);
+    api('sustituciones').then(llegaSust).catch(() => {});
   }).catch(e => {
+    if (S.d) { toast('Sin conexión: ves la última copia guardada', 'err'); return; }
     $('#main').innerHTML = '<div class="empty"><h2 class="h2">No he podido cargar los datos</h2><p>' + esc(e.message) + '</p><button class="btn" onclick="location.reload()">Reintentar</button></div>';
   });
 }

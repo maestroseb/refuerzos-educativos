@@ -501,10 +501,10 @@ function hojaAnadirAlumno() {
     res.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { anadirExtra(b.dataset.id); cerrarHoja(); });
     const cb = $('#crearAlu', res);
     if (cb) cb.onclick = () => {
-      cb.disabled = true; cb.textContent = 'Creando…';
-      api('guardarAlumno', { nombre: inp.value.trim(), grupo_id: $('#nuevoGrupo', res).value }).then(a => {
-        S.d.alumnado.push(a); indexar(); anadirExtra(a.id); cerrarHoja(); toast(a.nombre + ' dado de alta');
-      }).catch(e => { fallo(e); cb.disabled = false; });
+      const a = { id: nuevoIdLocal(), nuevo: true, nombre: inp.value.trim(), grupo_id: $('#nuevoGrupo', res).value };
+      cerrarHoja();
+      hacer('guardarAlumno', [a], a.nombre + ' dado de alta', 'alta de ' + a.nombre);
+      anadirExtra(a.id);
     };
   };
   inp.oninput = pinta;

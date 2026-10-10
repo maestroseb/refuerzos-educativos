@@ -120,6 +120,14 @@ function reemplazar_(nombre, nuevas, quitar) {
   delete cacheFilas_[nombre];
 }
 
+/** Id generado en el navegador (altas optimistas): valida el formato y
+ *  devuelve la fila previa con ese id, si existe (reintento o edición). */
+function previa_(nombre, id) {
+  if (!id) return null;
+  if (!/^[a-z0-9-]{6,40}$/i.test(String(id))) throw new Error('Id no válido.');
+  return filas_(nombre).filter(function(f) { return f.id === id; })[0] || null;
+}
+
 function nuevoId_() { return Utilities.getUuid().slice(0, 8); }
 
 function config_() {
@@ -141,6 +149,7 @@ function conCandado_(fn) {
   lock.waitLock(20000);
   // Lo leído antes del candado puede estar desfasado (y con nº de fila viejo).
   Object.keys(cacheFilas_).forEach(function(k) { delete cacheFilas_[k]; });
+  yoMemo_ = null;
   try { return fn(); } finally { lock.releaseLock(); }
 }
 

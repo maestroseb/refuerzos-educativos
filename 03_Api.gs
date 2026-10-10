@@ -14,7 +14,6 @@ function inicio() {
     centro: c.CENTRO || '',
     materias: (c.MATERIAS ? c.MATERIAS.split('|') : MATERIAS_DEF),
     motivos: MOTIVOS_DEF,
-    sustituciones: sustitucionesMadre_(),
     madreId: c.MADRE_ID || '',
     ultimaSincro: c.ULTIMA_SINCRO || '',
     sincroDiaria: sincroDiariaActiva_(),
@@ -35,6 +34,12 @@ function inicio() {
       const o = limpio_(r); o.aprovechamiento = Number(r.aprovechamiento) || 0; return o;
     })
   };
+}
+
+/** Aparte de inicio(): abre la hoja madre y no debe frenar el arranque. */
+function sustituciones() {
+  exigirAcceso_();
+  return sustitucionesMadre_();
 }
 
 /* ---------- Registros ---------- */
@@ -104,37 +109,44 @@ function borrarRegistro(id) {
 function guardarAlumno(a) {
   return conCandado_(function() {
     const yo = exigirAcceso_();
-    if (a.id && !yo.admin) {
-      const prev = filas_(HOJAS.ALUMNADO).filter(function(x) { return x.id === a.id; })[0];
-      if (prev && (prev.grupo_id !== a.grupo_id || a.activo === false)) throw new Error('Solo la administración puede cambiar de grupo o archivar alumnado.');
+    const prev = previa_(HOJAS.ALUMNADO, a.id);
+    if (a.id && !prev && !a.nuevo) throw new Error('Ese alumno o alumna ya no existe.');
+    if (prev && !yo.admin) {
+      if ((prev.grupo_id !== a.grupo_id || a.activo === false)) throw new Error('Solo la administración puede cambiar de grupo o archivar alumnado.');
     }
     const nombre = String(a.nombre || '').trim().replace(/\s+/g, ' ');
     if (!nombre) throw new Error('Escribe el nombre.');
     const o = { id: a.id || '', nombre: nombre, grupo_id: a.grupo_id || '',
       activo: a.activo === false ? 'false' : 'true', notas: a.notas || '' };
-    if (!a.id) o.creado_por = yo.email;
+    if (!prev) o.creado_por = yo.email;
     const g = guardar_(HOJAS.ALUMNADO, o);
     g.activo = g.activo !== 'false';
     return g;
   });
 }
 
-/** Alta en bloque: un nombre por línea. Omite los que ya existen en el grupo. */
-function importarAlumnado(texto, grupoId) {
+/** Alta en bloque: un nombre por línea. Omite los que ya existen en el grupo.
+ *  `lista` ([{id, nombre}], ids del navegador) permite el alta optimista: se
+ *  devuelven los de la lista que quedan en la hoja (también en un reintento). */
+function importarAlumnado(texto, grupoId, lista) {
   exigirAdmin_();
   return conCandado_(function() {
-    const ya = {};
-    filas_(HOJAS.ALUMNADO).forEach(function(x) { if (x.grupo_id === grupoId) ya[x.nombre.toLowerCase()] = 1; });
+    const ya = {}, ids = {};
+    filas_(HOJAS.ALUMNADO).forEach(function(x) { ids[x.id] = 1; if (x.grupo_id === grupoId) ya[x.nombre.toLowerCase()] = 1; });
     const yo = yo_();
-    const nuevos = [];
-    String(texto || '').split(/\r?\n/).forEach(function(l) {
-      const n = l.replace(/^[\s\d.\-–•*)]+/, '').replace(/\t+/g, ' ').trim().replace(/\s+/g, ' ');
+    const nuevos = [], quedan = [];
+    const entrada = lista ? lista : String(texto || '').split(/\r?\n/).map(function(l) { return { nombre: l }; });
+    entrada.forEach(function(e) {
+      if (e.id && ids[e.id]) { quedan.push(e.id); return; }
+      if (e.id) previa_(HOJAS.ALUMNADO, e.id);
+      const n = String(e.nombre || '').replace(/^[\s\d.\-–•*)]+/, '').replace(/\t+/g, ' ').trim().replace(/\s+/g, ' ');
       if (!n || ya[n.toLowerCase()]) return;
       ya[n.toLowerCase()] = 1;
-      nuevos.push({ id: nuevoId_(), nombre: n, grupo_id: grupoId, activo: 'true', notas: '', creado_por: yo.email });
+      const o = { id: e.id || nuevoId_(), nombre: n, grupo_id: grupoId, activo: 'true', notas: '', creado_por: yo.email };
+      nuevos.push(o); quedan.push(o.id);
     });
     if (nuevos.length) reemplazar_(HOJAS.ALUMNADO, nuevos, function() { return false; });
-    return nuevos.map(function(n) { n.activo = true; return n; });
+    return lista ? quedan : nuevos.map(function(n) { n.activo = true; return n; });
   });
 }
 
@@ -162,7 +174,7 @@ function guardarDocente(d) {
       sustituto_email: String(d.sustituto_email || '').trim().toLowerCase(),
       es_admin: d.es_admin ? 'true' : 'false', activo: d.activo === false ? 'false' : 'true'
     };
-    if (!d.id) o.origen = 'manual';
+    if (!previa_(HOJAS.DOCENTES, d.id)) o.origen = 'manual';
     const g = guardar_(HOJAS.DOCENTES, o);
     g.es_admin = si_(g.es_admin); g.activo = si_(g.activo);
     return g;
@@ -205,14 +217,14 @@ function guardarAjustes(c) {
 
 function guardarTramo(t) {
   exigirAdmin_();
-  return conCandado_(function() { return guardar_(HOJAS.TRAMOS, t); });
+  return conCandado_(function() { previa_(HOJAS.TRAMOS, t.id); return guardar_(HOJAS.TRAMOS, t); });
 }
 
 function borrarTramo(id) { exigirAdmin_(); return conCandado_(function() { return borrar_(HOJAS.TRAMOS, id); }); }
 
 function guardarGrupo(g) {
   exigirAdmin_();
-  return conCandado_(function() { return guardar_(HOJAS.GRUPOS, g); });
+  return conCandado_(function() { previa_(HOJAS.GRUPOS, g.id); return guardar_(HOJAS.GRUPOS, g); });
 }
 
 function borrarGrupo(id) {

@@ -14,7 +14,7 @@ VISTAS.ajustes = function(el) {
 };
 function pintarAjustes() { ({ general: ajGeneral, docentes: ajDocentes, horarios: ajHorarios, alumnado: ajAlumnado, estructura: ajEstructura })[tabAjustes]($('#aBody')); }
 function recargar(msg) {
-  return api('inicio').then(d => { S.d = d; indexar(); pintarYo(); if (msg) toast(msg); pintarAjustes(); });
+  return resincronizar().then(() => { if (msg) toast(msg); });
 }
 
 /* ---------- General ---------- */
@@ -33,16 +33,16 @@ function ajGeneral(c) {
     '<section class="card stack"><h2 class="h2">Datos</h2><p class="muted" style="margin:4px 0 0">Todo se guarda en una hoja de cálculo de tu Drive. Puedes abrirla para revisarla o hacer tus propias tablas.</p><div><a class="btn" href="' + esc(d.bdUrl) + '" target="_blank" rel="noopener">Abrir la hoja de datos ↗</a></div>' +
     '<p class="muted" style="font-size:12.5px;margin:0">Administran: quien despliega la app y el profesorado marcado como administración en «Profesorado».</p></section></div>';
   let mats = d.materias.slice();
-  const gm = () => api('guardarAjustes', { materias: mats }).then(() => recargar('Materias guardadas')).catch(fallo);
+  const gm = () => hacer('guardarAjustes', [{ materias: mats.slice() }], 'Materias guardadas');
   c.querySelectorAll('[data-quita]').forEach(b => b.onclick = () => { if (mats.length < 2) return; mats = mats.filter(m => m !== b.dataset.quita); gm(); });
   $('#nuevaMat').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) { mats.push(e.target.value.trim()); gm(); } };
-  $('#gCentro').onclick = () => api('guardarAjustes', { centro: $('#centro').value }).then(() => recargar('Guardado')).catch(fallo);
+  $('#gCentro').onclick = () => hacer('guardarAjustes', [{ centro: $('#centro').value }], 'Guardado');
   $('#sync').onclick = () => {
     const b = $('#sync'); b.disabled = true; b.innerHTML = IC.sync + 'Sincronizando…';
     api('sincronizarMadre', $('#madre').value).then(r => recargar('Sincronizado: ' + r.docentes + ' docentes, ' + r.grupos + ' grupos, ' + r.franjas + ' franjas de refuerzo'))
       .catch(e => { fallo(e); b.disabled = false; b.innerHTML = IC.sync + 'Sincronizar ahora'; });
   };
-  $('#diaria').onchange = e => api('activarSincroDiaria', e.target.checked).then(v => { S.d.sincroDiaria = v; toast(v ? 'Sincronización nocturna activada' : 'Sincronización nocturna desactivada'); }).catch(fallo);
+  $('#diaria').onchange = e => hacer('activarSincroDiaria', [e.target.checked], e.target.checked ? 'Sincronización nocturna activada' : 'Sincronización nocturna desactivada');
 }
 
 /* ---------- Profesorado ---------- */
@@ -68,10 +68,13 @@ function editarDocente(d) {
     '<div><label class="lbl">Sustituto/a</label><input class="input" id="ds" value="' + esc(d.sustituto || '') + '"></div><div><label class="lbl">Email del sustituto/a</label><input class="input" id="dse" type="email" value="' + esc(d.sustituto_email || '') + '"></div></div>' +
     '<label class="switch" style="margin-top:8px"><span><b style="font-weight:600">Administración</b><br><small class="muted">Accede a Ajustes</small></span><input type="checkbox" id="da"' + (d.es_admin ? ' checked' : '') + '></label>' +
     '<div class="sheet-foot">' + (d.id ? '<button class="btn danger" id="dDel" style="margin-right:auto">Eliminar</button>' : '') + '<button class="btn" onclick="cerrarHoja()">Cancelar</button><button class="btn primary" id="dOk">Guardar</button></div>');
-  $('#dOk', inn).onclick = () => api('guardarDocente', { id: d.id, nombre_completo: $('#dn').value, nombre_corto: $('#dc').value, email: $('#de').value, sustituto: $('#ds').value, sustituto_email: $('#dse').value, es_admin: $('#da').checked, activo: true })
-    .then(() => { cerrarHoja(); return recargar('Docente guardado'); }).catch(fallo);
+  $('#dOk', inn).onclick = () => {
+    const o = { id: d.id || nuevoIdLocal(), nombre_completo: $('#dn').value, nombre_corto: $('#dc').value, email: $('#de').value, sustituto: $('#ds').value, sustituto_email: $('#dse').value, es_admin: $('#da').checked, activo: true };
+    if (!(o.nombre_corto + o.nombre_completo).trim()) return toast('Escribe el nombre', 'err');
+    cerrarHoja(); hacer('guardarDocente', [o], 'Docente guardado', o.nombre_completo || o.nombre_corto);
+  };
   const del = $('#dDel', inn);
-  if (del) del.onclick = async () => { if (!(await confirmar('Se eliminará el docente y sus franjas de refuerzo. Sus registros se conservan.', 'Eliminar'))) return; api('borrarDocente', d.id).then(() => recargar('Docente eliminado')).catch(fallo); };
+  if (del) del.onclick = async () => { if (!(await confirmar('Se eliminará el docente y sus franjas de refuerzo. Sus registros se conservan.', 'Eliminar'))) return; cerrarHoja(); hacer('borrarDocente', [d.id], 'Docente eliminado'); };
 }
 
 /* ---------- Horarios ---------- */
@@ -123,7 +126,7 @@ function ajHorarios(c) {
   c.innerHTML = '<section class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px"><select class="select" id="hd" style="flex:1;min-width:200px">' + opts + '</select><button class="btn primary" id="hSave" disabled>Guardar horario</button></div>' +
     '<p class="muted" style="font-size:13px;margin:0 0 12px">Toca una celda para indicar a qué grupo entra de refuerzo. ● = tiene franjas.</p><div class="sched" id="sch"></div></section>';
   $('#hd').onchange = e => { ajDoc = e.target.value; ajHorarios(c); };
-  $('#hSave').onclick = () => api('guardarHorarioDocente', ajDoc, fr).then(() => recargar('Horario guardado')).catch(fallo);
+  $('#hSave').onclick = () => hacer('guardarHorarioDocente', [ajDoc, fr.map(f => Object.assign({}, f, { id: f.id || nuevoIdLocal() }))], 'Horario guardado', 'horario de ' + nombreDocId(ajDoc));
   pinta();
 }
 
@@ -140,7 +143,17 @@ function ajAlumnado(c) {
     '</div></section><section class="card stack"><h2 class="h2" style="font-size:19px">Añadir en bloque</h2><p class="muted" style="margin:0;font-size:13.5px">Un nombre por línea (puedes pegar desde Séneca u otra hoja).</p><textarea class="textarea" id="bulk" placeholder="Apellidos, Nombre&#10;Apellidos, Nombre"></textarea><button class="btn primary" id="bOk">Añadir a ' + esc(nombreGrupo(ajGrupo)) + '</button></section></div>';
   c.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { ajGrupo = b.dataset.g; ajAlumnado(c); });
   c.querySelectorAll('[data-e]').forEach(b => b.onclick = () => editarAlumno(S.idx.alu[b.dataset.e]));
-  $('#bOk').onclick = () => { const t = $('#bulk').value; if (!t.trim()) return; api('importarAlumnado', t, ajGrupo).then(n => recargar(n.length + ' añadidos')).catch(fallo); };
+  $('#bOk').onclick = () => {
+    // Mismas reglas que el servidor: limpia viñetas y números, omite repetidos del grupo.
+    const ya = new Set(S.d.alumnado.filter(a => a.grupo_id === ajGrupo).map(a => a.nombre.toLowerCase())), lista = [];
+    $('#bulk').value.split(/\r?\n/).forEach(l => {
+      const n = l.replace(/^[\s\d.\-–•*)]+/, '').replace(/\t+/g, ' ').trim().replace(/\s+/g, ' ');
+      if (!n || ya.has(n.toLowerCase())) return;
+      ya.add(n.toLowerCase()); lista.push({ id: nuevoIdLocal() + lista.length, nombre: n });
+    });
+    if (!lista.length) return toast('No hay nombres nuevos');
+    hacer('importarAlumnado', ['', ajGrupo, lista], lista.length + (lista.length === 1 ? ' añadido' : ' añadidos'), 'alta en bloque');
+  };
 }
 function editarAlumno(a) {
   const opts = S.d.grupos.map(g => '<option value="' + esc(g.id) + '"' + (g.id === a.grupo_id ? ' selected' : '') + '>' + esc(g.nombre_corto) + '</option>').join('');
@@ -148,8 +161,12 @@ function editarAlumno(a) {
     '<div><label class="lbl">Notas (visibles para el profesorado)</label><input class="input" id="ano" value="' + esc(a.notas || '') + '" placeholder="p. ej. Programa de refuerzo de lectura"></div>' +
     '<label class="switch"><span><b style="font-weight:600">En refuerzo</b><br><small class="muted">Si lo desactivas deja de salir en las píldoras</small></span><input type="checkbox" id="aa"' + (a.activo ? ' checked' : '') + '></label></div>' +
     '<div class="sheet-foot"><button class="btn danger" id="aDel" style="margin-right:auto">Eliminar</button><button class="btn" onclick="cerrarHoja()">Cancelar</button><button class="btn primary" id="aOk">Guardar</button></div>');
-  $('#aOk', inn).onclick = () => api('guardarAlumno', { id: a.id, nombre: $('#an').value, grupo_id: $('#ag').value, notas: $('#ano').value, activo: $('#aa').checked }).then(() => { cerrarHoja(); return recargar('Guardado'); }).catch(fallo);
-  $('#aDel', inn).onclick = async () => { if (!(await confirmar('Si tiene sesiones registradas se archivará en lugar de borrarse.', 'Eliminar'))) return; api('borrarAlumno', a.id).then(r => recargar(r === 'archivado' ? 'Archivado (tiene registros)' : 'Eliminado')).catch(fallo); };
+  $('#aOk', inn).onclick = () => {
+    const o = { id: a.id, nombre: $('#an').value, grupo_id: $('#ag').value, notas: $('#ano').value, activo: $('#aa').checked };
+    if (!o.nombre.trim()) return toast('Escribe el nombre', 'err');
+    cerrarHoja(); hacer('guardarAlumno', [o], 'Guardado', o.nombre);
+  };
+  $('#aDel', inn).onclick = async () => { if (!(await confirmar('Si tiene sesiones registradas se archivará en lugar de borrarse.', 'Eliminar'))) return; cerrarHoja(); hacer('borrarAlumno', [a.id], usaAlumno(a.id) ? 'Archivado (tiene registros)' : 'Eliminado', a.nombre); };
 }
 
 /* ---------- Tramos y grupos (por si no hay hoja madre) ---------- */
@@ -163,14 +180,14 @@ function ajEstructura(c) {
     const inn = abrirHoja(cabHoja(t.id ? 'Editar tramo' : 'Nuevo tramo') + '<div class="grid2"><div><label class="lbl">Empieza</label><input class="input" type="time" id="ti" value="' + esc(t.hora_inicio || '') + '"></div><div><label class="lbl">Termina</label><input class="input" type="time" id="tf" value="' + esc(t.hora_fin || '') + '"></div><div><label class="lbl">Etiqueta</label><input class="input" id="te" value="' + esc(t.etiqueta || '') + '" placeholder="1ª sesión"></div><div><label class="lbl">Orden</label><input class="input" type="number" id="to" value="' + esc(t.orden || S.d.tramos.length + 1) + '"></div></div>' +
       '<label class="switch"><span><b style="font-weight:600">Es recreo</b></span><input type="checkbox" id="tr"' + (String(t.es_recreo) === 'true' ? ' checked' : '') + '></label>' +
       '<div class="sheet-foot">' + (t.id ? '<button class="btn danger" id="tDel" style="margin-right:auto">Eliminar</button>' : '') + '<button class="btn primary" id="tOk">Guardar</button></div>');
-    $('#tOk', inn).onclick = () => api('guardarTramo', { id: t.id || '', hora_inicio: $('#ti').value, hora_fin: $('#tf').value, etiqueta: $('#te').value, orden: $('#to').value, es_recreo: $('#tr').checked ? 'true' : 'false' }).then(() => { cerrarHoja(); return recargar('Tramo guardado'); }).catch(fallo);
-    const del = $('#tDel', inn); if (del) del.onclick = () => api('borrarTramo', t.id).then(() => { cerrarHoja(); return recargar('Tramo eliminado'); }).catch(fallo);
+    $('#tOk', inn).onclick = () => { cerrarHoja(); hacer('guardarTramo', [{ id: t.id || nuevoIdLocal(), hora_inicio: $('#ti').value, hora_fin: $('#tf').value, etiqueta: $('#te').value, orden: $('#to').value, es_recreo: $('#tr').checked ? 'true' : 'false' }], 'Tramo guardado'); };
+    const del = $('#tDel', inn); if (del) del.onclick = () => { cerrarHoja(); hacer('borrarTramo', [t.id], 'Tramo eliminado'); };
   };
   const grupo = g => {
     const inn = abrirHoja(cabHoja(g.id ? 'Editar grupo' : 'Nuevo grupo') + '<div class="grid2"><div><label class="lbl">Nombre corto</label><input class="input" id="gc" value="' + esc(g.nombre_corto || '') + '" placeholder="3ºA" autofocus></div><div><label class="lbl">Nombre largo</label><input class="input" id="gl" value="' + esc(g.nombre_largo || '') + '" placeholder="3º de Primaria A"></div><div><label class="lbl">Orden</label><input class="input" type="number" id="go" value="' + esc(g.orden || S.d.grupos.length + 1) + '"></div></div>' +
       '<div class="sheet-foot">' + (g.id ? '<button class="btn danger" id="gDel" style="margin-right:auto">Eliminar</button>' : '') + '<button class="btn primary" id="gOk">Guardar</button></div>');
-    $('#gOk', inn).onclick = () => api('guardarGrupo', { id: g.id || '', nombre_corto: $('#gc').value.trim(), nombre_largo: $('#gl').value.trim(), orden: $('#go').value }).then(() => { cerrarHoja(); return recargar('Grupo guardado'); }).catch(fallo);
-    const del = $('#gDel', inn); if (del) del.onclick = () => api('borrarGrupo', g.id).then(() => { cerrarHoja(); return recargar('Grupo eliminado'); }).catch(fallo);
+    $('#gOk', inn).onclick = () => { if (!$('#gc').value.trim()) return toast('Escribe el nombre corto', 'err'); cerrarHoja(); hacer('guardarGrupo', [{ id: g.id || nuevoIdLocal(), nombre_corto: $('#gc').value.trim(), nombre_largo: $('#gl').value.trim(), orden: $('#go').value }], 'Grupo guardado'); };
+    const del = $('#gDel', inn); if (del) del.onclick = () => { if (S.d.alumnado.some(a => a.grupo_id === g.id)) return toast('El grupo tiene alumnado: muévelo antes a otro grupo.', 'err'); cerrarHoja(); hacer('borrarGrupo', [g.id], 'Grupo eliminado'); };
   };
   $('#tNew').onclick = () => tramo({});
   $('#gNew').onclick = () => grupo({});
