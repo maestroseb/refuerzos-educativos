@@ -42,6 +42,28 @@ function sustituciones() {
   return sustitucionesMadre_();
 }
 
+/**
+ * Varios cambios en una sola llamada (la cola de guardado del navegador).
+ * Cada operación pasa por su función pública con sus propias comprobaciones
+ * de permisos y su candado; un fallo no detiene las demás.
+ */
+// Por nombre (se resuelven al llamar: algunas están en archivos posteriores).
+const OPS_LOTE_ = ['guardarRegistro', 'borrarRegistro', 'guardarAlumno', 'importarAlumnado', 'borrarAlumno',
+  'guardarDocente', 'borrarDocente', 'guardarHorarioDocente', 'guardarAjustes', 'activarSincroDiaria',
+  'guardarTramo', 'borrarTramo', 'guardarGrupo', 'borrarGrupo'];
+function lote(ops) {
+  if (!Array.isArray(ops) || ops.length > 50) throw new Error('Lote no válido.');
+  return ops.map(function(op) {
+    if (!op || OPS_LOTE_.indexOf(op.fn) < 0) return { ok: false, error: 'Operación no permitida.' };
+    try { return { ok: true, r: globalThis[op.fn].apply(null, Array.isArray(op.args) ? op.args : []) }; }
+    catch (e) {
+      // Candado ocupado: es pasajero, se reintenta el lote entero (es idempotente).
+      if (/lock|bloqueo/i.test(String(e && e.message))) throw e;
+      return { ok: false, error: (e && e.message) || String(e) };
+    }
+  });
+}
+
 /* ---------- Registros ---------- */
 
 function guardarRegistro(r) {

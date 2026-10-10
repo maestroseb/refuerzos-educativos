@@ -37,14 +37,14 @@
   const DB = { yo: { email: 'doc0@g.educaand.es', docenteId: 'd0', comoSustituto: false, admin: true, elegible: false }, centro: 'CEIP Carlos III', materias: ['Lengua', 'Matemáticas', 'Otros'], motivos: ['Sustitución', 'Ausencia del alumnado', 'Actividad del centro', 'Otro'], madreId: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789', ultimaSincro: '2026-10-08T06:00:12', sincroDiaria: true, bdUrl: '#', tramos, grupos, semanas: [], docentes, horarios, alumnado, registros };
   if (window.MOCK_VACIO) { DB.tramos = []; DB.registros = []; DB.horarios = []; }
   const handlers = {
-    inicio: () => JSON.parse(JSON.stringify(DB)), sustituciones: () => sustituciones,
+    inicio: () => JSON.parse(JSON.stringify(DB)), lote: ops => { window.MOCK_LOTES = (window.MOCK_LOTES || 0) + 1; if (window.MOCK_FALLO_RED) throw new Error('NetworkError: Connection failure due to HTTP 0'); return ops.map(o => { try { return { ok: true, r: (handlers[o.fn] || (() => null))(...o.args) }; } catch (e) { return { ok: false, error: e.message }; } }); }, sustituciones: () => sustituciones,
     guardarRegistro: r => Object.assign({}, r, { id: r.id || 'n' + Date.now(), alumno_ids: r.alumno_ids.join(','), creado: '2026-10-08T11:30:00' }),
     borrarRegistro: () => true, guardarAlumno: a => Object.assign({ id: 'n' + Date.now(), activo: true }, a),
     sincronizarMadre: () => ({ docentes: 10, grupos: 12, franjas: 53, tramos: 6 }), activarSincroDiaria: v => v,
     guardarAjustes: () => true, guardarDocente: d => d, guardarHorarioDocente: () => [], importarAlumnado: (t, g, l) => (l || []).map(x => x.id), guardarTramo: t => t, guardarGrupo: g => g, borrarAlumno: () => 'borrado'
   };
   function runner(ok, ko) {
-    return new Proxy({}, { get: (_, k) => k === 'withSuccessHandler' ? f => runner(f, ko) : k === 'withFailureHandler' ? f => runner(ok, f) : (...a) => setTimeout(() => { try { if (window.MOCK_FALLO_RED && k === 'guardarRegistro') throw new Error('NetworkError: Connection failure due to HTTP 0'); ok && ok((handlers[k] || (() => null))(...a)); } catch (e) { ko && ko(e); } }, /^(guardar|borrar|importar)/.test(k) ? 1500 : k === 'inicio' ? (window.MOCK_INICIO_MS || 120) : 120) });
+    return new Proxy({}, { get: (_, k) => k === 'withSuccessHandler' ? f => runner(f, ko) : k === 'withFailureHandler' ? f => runner(ok, f) : (...a) => setTimeout(() => { try { if (window.MOCK_FALLO_RED && k === 'guardarRegistro') throw new Error('NetworkError: Connection failure due to HTTP 0'); ok && ok((handlers[k] || (() => null))(...a)); } catch (e) { ko && ko(e); } }, /^(guardar|borrar|importar|lote)/.test(k) ? 1500 : k === 'inicio' ? (window.MOCK_INICIO_MS || 120) : 120) });
   }
   window.google = { script: { run: runner() } };
 })();

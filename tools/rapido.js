@@ -20,6 +20,9 @@ const OUT = path.join(__dirname, 'out');
   console.log('Bloque visible; cola:', await p.textContent('#cola'));
   await p.waitForSelector('#cola', { state: 'detached', timeout: 8000 });
   console.log('Cola vacía. Nuevo Dos sigue:', !!(await p.$('text=Nuevo Dos')));
+  const n0 = await p.evaluate(() => { const n = window.MOCK_LOTES; for (let i = 0; i < 6; i++) hacer('guardarAlumno', [{ id: nuevoIdLocal() + i, nuevo: true, nombre: 'Lote ' + i, grupo_id: S.d.grupos[0].id }]); return n; });
+  await p.waitForSelector('#cola', { state: 'detached', timeout: 8000 });
+  console.log('6 altas seguidas en', (await p.evaluate(() => window.MOCK_LOTES)) - n0, 'llamadas');
   // Arranque: con inicio lento debe pintarse ya desde la copia local.
   await p.evaluate(() => { localStorage.setItem('ref.vista', '"registrar"'); });
   await p.addInitScript(() => { window.MOCK_INICIO_MS = 3000; });

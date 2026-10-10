@@ -333,13 +333,15 @@ function hacer(fn, args, msg, txt) {
   LS.set('cola', COLA.items);
   if (msg) toast(msg);
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  refrescarVista(); procesarCola();
+  refrescarVista(); pronto();
 }
+/* Espera un instante antes de enviar para juntar en un lote los cambios seguidos. */
+let tCola;
+function pronto() { pintarCola(); clearTimeout(tCola); tCola = setTimeout(procesarCola, 250); }
 function encolar(p, prev) {
   COLA.items.push({ p: p, prev: prev ? Object.assign({}, prev) : null });
   LS.set('cola', COLA.items);
-  pintarCola();
-  procesarCola();
+  pronto();
 }
 /* Vuelve a aplicar lo pendiente sobre datos recién llegados del servidor. */
 function reaplicarCola(d) {
@@ -352,41 +354,44 @@ function reaplicarCola(d) {
     if (i >= 0) d.registros[i] = local; else d.registros.push(local);
   });
 }
+/* Envía de una vez lo pendiente (hasta 25 cambios) en una sola llamada. */
 function procesarCola() {
   if (COLA.activa || COLA.espera || !COLA.items.length) return pintarCola();
   COLA.activa = true; pintarCola();
-  const it = COLA.items[0];
-  api(it.fn || 'guardarRegistro', ...(it.fn ? it.args : [it.p])).then(r => {
-    COLA.items.shift(); LS.set('cola', COLA.items);
-    if (it.fn) { if (RESP[it.fn]) RESP[it.fn](r, it); }
-    else {
-      // Si hay otra edición del mismo registro en cola, sigue marcado como pendiente.
-      if (COLA.items.some(x => x.p && x.p.id === r.id)) r._pend = true;
-      upsert(S.d.registros, r);
-      const g = S.d.registros.find(x => x.id === r.id); if (!r._pend) delete g._pend;
-    }
+  const lote = COLA.items.slice(0, 25);
+  api('lote', lote.map(it => ({ fn: it.fn || 'guardarRegistro', args: it.fn ? it.args : [it.p] }))).then(res => {
+    let resinc = false;
+    lote.forEach((it, i) => {
+      COLA.items.shift();
+      const x = res[i] || { ok: false, error: 'Sin respuesta' };
+      if (x.ok) exitoItem(it, x.r);
+      else if (it.fn) { toast('No se guardó' + (it.txt ? ' «' + it.txt + '»' : '') + ': ' + x.error, 'err'); resinc = true; }
+      else falloRegistro(it, x.error);
+    });
+    LS.set('cola', COLA.items);
     indexar(); refrescarVista();
-    COLA.activa = false; procesarCola();
+    COLA.activa = false;
+    if (resinc) resincronizar();
+    procesarCola();
   }).catch(e => {
     COLA.activa = false;
-    if (esErrorRed(e)) {
-      COLA.espera = true; pintarCola();
-      setTimeout(() => { COLA.espera = false; procesarCola(); }, 10000);
-      return;
-    }
-    COLA.items.shift(); LS.set('cola', COLA.items);
-    if (it.fn) {
-      toast('No se guardó' + (it.txt ? ' «' + it.txt + '»' : '') + ': ' + (e.message || e), 'err');
-      resincronizar();
-    } else {
-      if (it.prev) { const i = S.d.registros.findIndex(x => x.id === it.p.id); if (i >= 0) S.d.registros[i] = it.prev; }
-      else S.d.registros = S.d.registros.filter(x => x.id !== it.p.id);
-      indexar(); refrescarVista();
-      LS.set('fallido', it.p);
-      toast('No se guardó la sesión del ' + fechaCorta(it.p.fecha) + ': ' + (e.message || e), 'err', { txt: 'Recuperar', fn: recuperarFallido });
-    }
-    procesarCola();
+    // Sin conexión (o fallo general): se reintenta el lote entero; los envíos son idempotentes.
+    COLA.espera = true; pintarCola();
+    setTimeout(() => { COLA.espera = false; procesarCola(); }, esErrorRed(e) ? 10000 : 20000);
   });
+}
+function exitoItem(it, r) {
+  if (it.fn) { if (RESP[it.fn]) RESP[it.fn](r, it); return; }
+  // Si hay otra edición del mismo registro en cola, sigue marcado como pendiente.
+  const pend = COLA.items.some(x => x.p && x.p.id === r.id);
+  upsert(S.d.registros, r);
+  const g = S.d.registros.find(x => x.id === r.id); if (pend) g._pend = true; else delete g._pend;
+}
+function falloRegistro(it, msg) {
+  if (it.prev) { const i = S.d.registros.findIndex(x => x.id === it.p.id); if (i >= 0) S.d.registros[i] = it.prev; }
+  else S.d.registros = S.d.registros.filter(x => x.id !== it.p.id);
+  LS.set('fallido', it.p);
+  toast('No se guardó la sesión del ' + fechaCorta(it.p.fecha) + ': ' + msg, 'err', { txt: 'Recuperar', fn: recuperarFallido });
 }
 function recuperarFallido() {
   const p = LS.get('fallido', null);
@@ -440,14 +445,17 @@ function llegaSust(s) {
   refrescarVista();
 }
 function resincronizar() {
+  const sust = api('sustituciones');
   return api('inicio').then(d => {
     LS.set('datos', d); cargarDatos(d);
-    api('sustituciones').then(llegaSust).catch(() => {});
+    sust.then(llegaSust).catch(() => {});
   }).catch(() => {});
 }
 function arrancar() {
   const copia = LS.get('datos', null);
   if (copia && copia.yo) { try { cargarDatos(copia); } catch (e) { S.d = null; } }
+  // Datos y sustituciones se piden a la vez; las sustituciones se aplican tras los datos.
+  const sust = api('sustituciones');
   api('inicio').then(d => {
     LS.set('datos', d);
     cargarDatos(d);
