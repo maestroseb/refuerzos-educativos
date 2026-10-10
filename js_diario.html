@@ -53,7 +53,7 @@ function detalleRegistro(id) {
   if (!r) return;
   const t = S.idx.tramo[r.tramo_id];
   const inn = abrirHoja(cabHoja(esc(fechaLarga(r.fecha)), esc(etiquetaTramo(t) + ' · ' + nombreGrupo(r.grupo_id) + ' · ' + nombreDocId(r.docente_id))) +
-    '<div class="stack"><div class="pills">' + aluIds(r).map(i => '<button class="pill sm" data-ficha="' + esc(i) + '">' + esc(nombreAlu(i)) + '</button>').join('') + '</div>' +
+    '<div class="stack"><div class="pills">' + aluIds(r).sort((a, b) => ordenGrupo((S.idx.alu[a] || {}).grupo_id) - ordenGrupo((S.idx.alu[b] || {}).grupo_id)).map(i => '<button class="pill sm" data-ficha="' + esc(i) + '" title="' + esc(nombreAlu(i)) + '">' + esc(S.idx.alu[i] ? nombrePildora(nombreAlu(i)) : nombreAlu(i)) + '</button>').join('') + '</div>' +
     (noHecha(r) ? '<div class="banner warn">' + IC.info + '<span class="grow">Sesión no realizada · <b>' + esc(r.motivo) + '</b></span></div>' :
     '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><span class="tag" style="--c:' + colorMateria(r.materia) + ';font-size:14px">' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) + '<span class="muted" style="font-size:13.5px">' + esc(NIVELES[+r.aprovechamiento] || 'Sin valorar') + '</span></div>') +
     '<p style="white-space:pre-line;margin:0;font-size:16px;line-height:1.6">' + (r.trabajado ? esc(r.trabajado) : '<span class="muted">Sin descripción.</span>') + '</p>' +
