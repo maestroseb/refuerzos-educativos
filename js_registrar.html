@@ -240,7 +240,7 @@ function pintarSesion() {
       '<b>' + esc(t.hora_inicio || t.etiqueta) + (hecho ? (registrosDe(S.actor, f.fecha, t.id).every(noHecha) ? ' <span aria-hidden="true" class="muted">–</span>' : ' <span aria-hidden="true" style="color:var(--ok)">✓</span>') : '') + '</b><small>' + esc(sub) + '</small></button>';
   }).join('');
   const fr = franjas.find(x => x.tramo_id === f.tramo_id);
-  const sel = gruposSel(f).filter(id => S.idx.grupo[id]), t = S.idx.tramo[f.tramo_id];
+  const sel = gruposSel(f).filter(id => S.idx.grupo[id]).sort((a, b) => ordenGrupo(a) - ordenGrupo(b)), t = S.idx.tramo[f.tramo_id];
   const g = S.idx.grupo[sel[0]], conjunto = sel.length > 1;
   const badge = !g ? '?' : g.nombre_corto.replace(/\s+/g, '').slice(0, 4) + (conjunto ? '<sup>+' + (sel.length - 1) + '</sup>' : '');
   const lista = arr => arr.length > 1 ? arr.slice(0, -1).join(', ') + ' y ' + arr[arr.length - 1] : arr.join('');
@@ -254,10 +254,15 @@ function pintarSesion() {
   const listaGrupos = (f.cambiarGrupo || !g) ? '<p class="muted" style="font-size:12.5px;margin:12px 0 6px">Marca uno o varios grupos (refuerzo conjunto).</p><div class="pills">' +
     S.d.grupos.map(x => '<button class="pill sm" data-grupo="' + esc(x.id) + '" aria-pressed="' + (sel.indexOf(x.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(x.nombre_corto) + '</button>').join('') + '</div>' : '';
   const alus = S.d.alumnado.filter(a => a.activo && sel.indexOf(a.grupo_id) >= 0)
-    .sort((a, b) => sel.indexOf(a.grupo_id) - sel.indexOf(b.grupo_id) || a.nombre.localeCompare(b.nombre, 'es'));
-  const extra = f.extra.filter(i => !alus.some(a => a.id === i));
-  const pill = (a, ex) => '<button class="pill' + (ex ? ' extra' : '') + '" data-alu="' + esc(a.id) + '" aria-pressed="' + (f.alumnos.indexOf(a.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(a.nombre) + (ex || conjunto ? ' <small>' + esc(nombreGrupo(a.grupo_id)) + '</small>' : '') + '</button>';
-  const pills = alus.map(a => pill(a, false)).join('') + extra.map(i => S.idx.alu[i] ? pill(S.idx.alu[i], true) : '').join('');
+    .sort((a, b) => ordenGrupo(a.grupo_id) - ordenGrupo(b.grupo_id) || a.nombre.localeCompare(b.nombre, 'es'));
+  const extra = f.extra.map(i => S.idx.alu[i]).filter(a => a && !alus.some(x => x.id === a.id))
+    .sort((a, b) => ordenGrupo(a.grupo_id) - ordenGrupo(b.grupo_id) || a.nombre.localeCompare(b.nombre, 'es'));
+  // Nombre e inicial del apellido; si dos coinciden, el apellido entero.
+  const cortos = {};
+  alus.concat(extra).forEach(a => { const k = nombrePildora(a.nombre); cortos[k] = (cortos[k] || 0) + 1; });
+  const corto = a => { const k = nombrePildora(a.nombre); return cortos[k] > 1 ? nombrePildora(a.nombre, true) : k; };
+  const pill = (a, ex) => '<button class="pill' + (ex ? ' extra' : '') + '" data-alu="' + esc(a.id) + '" title="' + esc(a.nombre) + '" aria-label="' + esc(a.nombre) + '" aria-pressed="' + (f.alumnos.indexOf(a.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(corto(a)) + (ex || conjunto ? ' <small>' + esc(nombreGrupo(a.grupo_id)) + '</small>' : '') + '</button>';
+  const pills = alus.map(a => pill(a, false)).join('') + extra.map(a => pill(a, true)).join('');
   c.innerHTML =
     '<div class="field-label"><span>Día</span><button class="linkbtn hint" id="otraFecha">' + (f.fecha === hoy ? 'Otra fecha' : relativa(f.fecha) + ' · cambiar') + '</button></div>' +
     '<div class="days"><button class="arrow" data-sem="-7" aria-label="Semana anterior">' + IC.left + '</button>' + dias +

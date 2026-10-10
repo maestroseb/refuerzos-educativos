@@ -88,10 +88,23 @@ const tramosLectivos = () => S.d.tramos.filter(t => String(t.es_recreo) !== 'tru
 const nombreDoc = d => d ? (d.nombre_corto || d.nombre_completo || '¿?') : '¿?';
 const nombreDocId = id => S.idx.doc[id] ? nombreDoc(S.idx.doc[id]) : (id ? 'Docente' : '—');
 /* Acepta un grupo o varios ("g1,g2", refuerzo conjunto): "3ºA + 3ºB". */
-const nombreGrupo = id => !id ? 'Sin grupo' : String(id).split(',').filter(Boolean).map(x => S.idx.grupo[x] ? S.idx.grupo[x].nombre_corto : '¿?').join(' + ');
+const nombreGrupo = id => !id ? 'Sin grupo' : String(id).split(',').filter(Boolean).sort((a, b) => ordenGrupo(a) - ordenGrupo(b)).map(x => S.idx.grupo[x] ? S.idx.grupo[x].nombre_corto : '¿?').join(' + ');
 const nombreAlu = id => S.idx.alu[id] ? S.idx.alu[id].nombre : 'Alumno/a eliminado';
 const etiquetaTramo = t => t ? (t.hora_inicio ? t.hora_inicio + '–' + t.hora_fin : (t.etiqueta || 'Tramo')) : '—';
 const iniciales = s => String(s || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+/* "Nombre A." para las píldoras. Admite "Apellidos, Nombre" (Séneca) y
+   "Nombre Apellidos". Con `largo` se escribe el primer apellido entero. */
+function nombrePildora(s, largo) {
+  const t = String(s || '').trim();
+  let nom, ape;
+  if (t.indexOf(',') >= 0) { const p = t.split(','); nom = p.slice(1).join(' ').trim(); ape = p[0].trim(); }
+  else { const w = t.split(/\s+/); nom = w[0]; ape = w.slice(1).join(' '); }
+  // Partículas (de, del, la…) se saltan para tomar la inicial del apellido.
+  const w = ape.split(/\s+/).filter(Boolean), i = w.findIndex(x => !/^(de|del|la|las|los|y)$/i.test(x));
+  const ap = i >= 0 ? w[i] : '';
+  return (nom || t) + (ap ? ' ' + (largo ? ap : ap[0].toUpperCase() + '.') : '');
+}
+const ordenGrupo = id => { const i = S.d.grupos.findIndex(g => g.id === id); return i < 0 ? 1e4 : i; };
 const primerNombre = s => String(s || '').split(/[\s,]+/)[0];
 function claseMateria(m) {
   const s = String(m || '').toLowerCase();
