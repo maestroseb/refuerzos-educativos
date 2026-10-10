@@ -4,7 +4,9 @@
  * Ese email (o el de su sustituto/a) se cruza con la pestaña Docentes.
  * Administra quien despliega y los docentes marcados con es_admin.
  */
+let yoMemo_ = null;
 function yo_() {
+  if (yoMemo_) return yoMemo_;
   const email = String(Session.getActiveUser().getEmail() || '').toLowerCase().trim();
   const duenio = String(Session.getEffectiveUser().getEmail() || '').toLowerCase().trim();
   const docentes = filas_(HOJAS.DOCENTES);
@@ -16,14 +18,14 @@ function yo_() {
   }
   const admin = (!!email && email === duenio) || (!!docente && !comoSustituto && si_(docente.es_admin)) ||
     String(config_().ADMINS || '').toLowerCase().split(/[,;\s]+/).indexOf(email) >= 0 && !!email;
-  return {
+  return (yoMemo_ = {
     email: email,
     docenteId: docente ? docente.id : '',
     comoSustituto: comoSustituto,
     admin: admin,
     // Sin email resoluble (cuenta ajena al dominio): se deja elegir docente.
     elegible: !docente && !email
-  };
+  });
 }
 
 /** Docente en cuyo nombre se actúa: el propio, o el elegido si se permite. */
