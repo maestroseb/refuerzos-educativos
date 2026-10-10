@@ -101,8 +101,8 @@ VISTAS.registrar = function(el, opts) {
   else lead = (hoy === hoyIso() ? 'Hoy tienes ' : 'Ese día tenías ') + franjasHoy.length + (franjasHoy.length === 1 ? ' refuerzo' : ' refuerzos') + ' · ' + (hechos === franjasHoy.length ? 'todo registrado ✓' : hechos + ' de ' + franjasHoy.length + ' registrados');
 
   el.innerHTML = cabeceraMovil() +
-    '<header class="hero hero-row reveal"><div><div class="eyebrow">' + esc(fechaLarga(hoyIso())) + '</div>' +
-    '<h1 class="h1">' + saludo + (nombre ? ',<br><em>' + esc(nombre) + '</em>.' : '.') + '</h1><p class="lead">' + esc(lead) + '</p></div>' + agendaHoy(hoy, franjasHoy) + '</header>' +
+    '<header class="hero reveal"><div class="eyebrow">' + esc(fechaLarga(hoyIso())) + '</div>' +
+    '<h1 class="h1">' + saludo + (nombre ? ', <em>' + esc(nombre) + '</em>.' : '.') + '</h1><p class="lead">' + esc(lead) + '</p></header>' +
     '<div id="regBody"></div>';
   const body = $('#regBody', el);
   if (!d.tramos.length) {
@@ -114,23 +114,74 @@ VISTAS.registrar = function(el, opts) {
     body.innerHTML = '<div class="card empty"><h2 class="h2">¿Quién eres?</h2><p>No encuentro tu email entre el profesorado.</p><button class="btn primary" onclick="menuUsuario()">Elegir docente</button></div>';
     return;
   }
-  body.innerHTML = '<div class="reg"><div class="col-l stack"><div id="banner"></div><section class="card" id="cSesion" aria-label="Sesión"></section></div>' +
-    '<div class="col-r stack"><section class="card" id="cContenido" aria-label="Contenido de la sesión"></section><div class="savebar" id="savebar"></div><section class="card" id="cHist" aria-label="Sesiones anteriores"></section></div></div>';
+  body.innerHTML = '<div class="row1"><div id="ahora"></div><div class="tiles" id="tiles"></div></div>' +
+    '<div class="reg"><div class="col-l stack"><div id="banner"></div><section class="card" id="cSesion" aria-label="Sesión"></section></div>' +
+    '<div class="col-r stack"><section class="card" id="cContenido" aria-label="Contenido de la sesión"></section> <div class="savebar" id="savebar"></div><section class="card next" id="cNext" hidden aria-label="A continuación"></section><section class="card" id="cHist" aria-label="Sesiones anteriores"></section></div></div>';
   el.classList.add('view-reg');
-  pintarSesion(); pintarContenido(); pintarHist(); pintarBanner(); pintarSavebar();
-  el.querySelectorAll('[data-ag]').forEach(b => b.onclick = () => { if (S.f.fecha !== b.dataset.agf) cambiarFecha(b.dataset.agf); cambiarTramo(b.dataset.ag); });
+  pintarSesion(); pintarContenido(); pintarHist(); pintarBanner(); pintarSavebar(); pintarTiles();
 };
 
-/* Agenda de hoy (escritorio): tus refuerzos y si están registrados. */
-function agendaHoy(fecha, franjas) {
-  if (!franjas.length) return '';
-  const ahora = ahoraMin();
-  const fr = franjas.slice().sort((a, b) => ordenTramo(a.tramo_id) - ordenTramo(b.tramo_id));
-  return '<aside class="agenda" aria-label="Tus refuerzos de hoy"><div class="field-label" style="margin:0"><span>' + (fecha === hoyIso() ? 'Hoy' : esc(fechaCorta(fecha))) + '</span><span class="hint">' + fr.length + ' refuerzos</span></div><ol>' + fr.map(f => {
-    const t = S.idx.tramo[f.tramo_id] || {}, rs = registrosDe(S.actor, fecha, f.tramo_id), ok = rs.length > 0, no = ok && rs.every(noHecha);
-    const now = fecha === hoyIso() && minutos(t.hora_inicio) <= ahora && ahora < minutos(t.hora_fin);
-    return '<li class="' + (now ? 'now' : '') + '"><button data-ag="' + esc(f.tramo_id) + '" data-agf="' + fecha + '"><span class="hr">' + esc(t.hora_inicio || '') + '</span><span>' + esc(gruposDeFranja(f).map(nombreGrupo).join(' · ')) + '</span><span class="st' + (no ? ' no' : ok ? ' ok' : '') + '" aria-label="' + (no ? 'No realizada' : ok ? 'Registrado' : 'Pendiente') + '">' + (no ? '–' : ok ? IC.check : '') + '</span></button></li>';
-  }).join('') + '</ol></aside>';
+/* ---------- «Ahora», «A continuación» y datos de la semana ---------- */
+const alumnosDeGrupos = ids => S.d.alumnado.filter(a => a.activo && ids.indexOf(a.grupo_id) >= 0).length;
+const franjasHoyOrd = () => diaDe(hoyIso()) ? franjasDe(S.actor, hoyIso()).sort((a, b) => ordenTramo(a.tramo_id) - ordenTramo(b.tramo_id)) : [];
+function irAFranja(tramo) { if (S.f.fecha !== hoyIso()) cambiarFecha(hoyIso()); cambiarTramo(tramo); }
+
+/* Tarjeta «Ahora»: el refuerzo en curso; si no hay, el siguiente de hoy;
+   si ya pasaron todos, el resumen del día. Un punto por refuerzo de hoy. */
+function pintarAhora() {
+  const c = $('#ahora');
+  if (!c) return;
+  const fr = franjasHoyOrd(), ahora = ahoraMin(), hoy = hoyIso();
+  if (!fr.length) { c.innerHTML = '<div class="ahora"><span class="lbl">Hoy</span><h2>Sin refuerzos en tu horario</h2><p>Puedes registrar cualquier sesión igualmente.</p></div>'; return; }
+  const tr = f => S.idx.tramo[f.tramo_id] || {};
+  const cur = fr.find(f => minutos(tr(f).hora_inicio) <= ahora && ahora < minutos(tr(f).hora_fin));
+  const prox = fr.find(f => minutos(tr(f).hora_inicio) > ahora);
+  const f = cur || prox, hechos = fr.filter(x => registrosDe(S.actor, hoy, x.tramo_id).length).length;
+  const dots = '<span class="dots" role="img" aria-label="' + hechos + ' de ' + fr.length + ' refuerzos de hoy registrados">' + fr.map(x =>
+    '<i class="' + (f && x.tramo_id === f.tramo_id ? 'cur' : registrosDe(S.actor, hoy, x.tramo_id).length ? 'ok' : '') + '"></i>').join('') + '</span>';
+  if (!f) {
+    c.innerHTML = '<div class="ahora"><div class="r"><span class="lbl">Hoy</span>' + dots + '</div><h2>' + (hechos === fr.length ? 'Todo registrado' : hechos + ' de ' + fr.length + ' registrados') + '</h2><p>' +
+      esc(fr.map(x => tr(x).hora_inicio + ' ' + nombreGrupo(x.grupo_ids)).join(' · ')) + '</p></div>';
+    return;
+  }
+  const t = tr(f), g = gruposDeFranja(f), ini = minutos(t.hora_inicio), fin = minutos(t.hora_fin);
+  const lbl = cur ? 'Ahora' + (g.length > 1 ? ' · refuerzo conjunto' : '') : 'Siguiente · en ' + (ini - ahora) + ' min';
+  c.innerHTML = '<button class="ahora" id="ahoraBtn"><div class="r"><span class="lbl">' + (cur ? '<i class="pulso" aria-hidden="true"></i>' : '') + esc(lbl) + '</span>' + dots + '</div>' +
+    '<h2>' + esc(nombreGrupo(f.grupo_ids)) + '</h2><p>' + esc((DIA_LARGO[diaDe(hoy)] || '') + ' · ' + etiquetaTramo(t) + ' · ' + alumnosDeGrupos(g) + ' alumnos') + '</p>' +
+    (cur ? '<div class="prog"><i style="width:' + Math.round((ahora - ini) / Math.max(1, fin - ini) * 100) + '%"></i></div><div class="tt"><span>' + esc(t.hora_inicio) + '</span><span>quedan ' + (fin - ahora) + ' min</span><span>' + esc(t.hora_fin) + '</span></div>' : '') + '</button>';
+  $('#ahoraBtn').onclick = () => irAFranja(f.tramo_id);
+}
+
+/* «A continuación»: el refuerzo de hoy que sigue al que se está registrando. */
+function pintarNext() {
+  const c = $('#cNext');
+  if (!c) return;
+  const fr = franjasHoyOrd(), base = S.f.fecha === hoyIso() ? ordenTramo(S.f.tramo_id) : ahoraMin();
+  const f = fr.find(x => ordenTramo(x.tramo_id) > base && !registrosDe(S.actor, hoyIso(), x.tramo_id).length);
+  if (!f) { c.hidden = true; return; }
+  const t = S.idx.tramo[f.tramo_id] || {}, g = gruposDeFranja(f);
+  const prev = S.d.registros.find(r => r.docente_id === S.actor && r.tramo_id === f.tramo_id && diaDe(r.fecha) === diaDe(hoyIso()) && !noHecha(r));
+  c.hidden = false;
+  c.innerHTML = '<div><span class="lbl-mono">A continuación · ' + esc(t.hora_inicio || '') + '</span><h3>' + esc(nombreGrupo(f.grupo_ids) + (prev && prev.materia ? ' · ' + prev.materia : '')) + '</h3>' +
+    '<div class="chips"><span class="chip">' + alumnosDeGrupos(g) + ' ALUMNOS</span><span class="chip">' + Math.max(0, minutos(t.hora_fin) - minutos(t.hora_inicio)) + ' MIN</span></div></div>' +
+    '<button class="play" id="nextBtn" aria-label="Registrar el refuerzo de las ' + esc(t.hora_inicio || '') + '"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>';
+  $('#nextBtn').onclick = () => { irAFranja(f.tramo_id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+}
+
+/* Tus datos de esta semana. */
+function pintarTiles() {
+  const c = $('#tiles');
+  if (!c) return;
+  const lun = lunesDe(hoyIso()), dom = sumaDias(lun, 6);
+  const rs = S.d.registros.filter(r => r.docente_id === S.actor && !noHecha(r) && r.fecha >= lun && r.fecha <= dom);
+  const alus = new Set(); rs.forEach(r => aluIds(r).forEach(i => alus.add(i)));
+  const v = rs.filter(r => +r.aprovechamiento > 0).map(r => +r.aprovechamiento);
+  const med = v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toLocaleString('es-ES', { maximumFractionDigits: 1, minimumFractionDigits: 1 }) : '—';
+  const ic = d => '<span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">' + d + '</svg></span>';
+  c.innerHTML =
+    '<div class="tile">' + ic('<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/>') + '<b>' + rs.length + '</b><span class="l">Sesiones esta semana</span><span class="s">Sesiones</span></div>' +
+    '<div class="tile">' + ic('<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 4a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>') + '<b>' + alus.size + '</b><span class="l">Alumnos atendidos</span><span class="s">Alumnos</span></div>' +
+    '<div class="tile">' + ic('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>') + '<b>' + med + (v.length ? '<sub>/5</sub>' : '') + '</b><span class="l">Aprovechamiento</span><span class="s">Media</span></div>';
 }
 
 function cargarEdicion(r) {
@@ -215,7 +266,7 @@ function pintarSesion() {
     pintarHist(); pintarSavebar(); guardarBorrador();
   });
   $('#addAlu').onclick = hojaAnadirAlumno;
-  $$('[data-ag]').forEach(b => b.toggleAttribute('aria-current', b.dataset.ag === f.tramo_id && b.dataset.agf === f.fecha));
+  pintarAhora(); pintarNext();
   const tSel = c.querySelector('.tramo[aria-pressed="true"]');
   if (tSel) requestAnimationFrame(() => { const tc = $('#tramos'); if (tc) tc.scrollLeft = Math.max(0, tSel.offsetLeft - tc.offsetLeft - 40); });
 }

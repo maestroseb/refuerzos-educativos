@@ -347,7 +347,7 @@ function pintarCola() {
 }
 /* Repinta lo que depende de los registros sin tocar lo que se está escribiendo. */
 function refrescarVista() {
-  if (S.view === 'registrar' && $('#cSesion')) { pintarSesion(); pintarBanner(); }
+  if (S.view === 'registrar' && $('#cSesion')) { pintarSesion(); pintarBanner(); pintarTiles(); }
   else if (S.view === 'diario' && $('#dList')) pintarDiario();
 }
 window.addEventListener('beforeunload', e => { if (COLA.items.length) { e.preventDefault(); e.returnValue = ''; } });
