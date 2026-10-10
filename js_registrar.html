@@ -128,6 +128,13 @@ function irAFranja(tramo) { if (S.f.fecha !== hoyIso()) cambiarFecha(hoyIso()); 
 
 /* Tarjeta «Ahora»: el refuerzo en curso; si no hay, el siguiente de hoy;
    si ya pasaron todos, el resumen del día. Un punto por refuerzo de hoy. */
+/* Franja que muestra «Ahora»: la que está en curso o, si no, la siguiente de hoy. */
+function franjaDestacada() {
+  const fr = franjasHoyOrd(), ahora = ahoraMin(), tr = f => S.idx.tramo[f.tramo_id] || {};
+  const cur = fr.find(f => minutos(tr(f).hora_inicio) <= ahora && ahora < minutos(tr(f).hora_fin));
+  return cur || fr.find(f => minutos(tr(f).hora_inicio) > ahora) || null;
+}
+
 function pintarAhora() {
   const c = $('#ahora');
   if (!c) return;
@@ -168,20 +175,41 @@ function pintarNext() {
   $('#nextBtn').onclick = () => { irAFranja(f.tramo_id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 }
 
-/* Tus datos de esta semana. */
+/* Tus datos de la semana: lo pendiente (con acceso directo), lo registrado
+   frente a lo previsto y el aprovechamiento medio. */
+function pendientesSemana() {
+  const hoy = hoyIso(), lun = lunesDe(hoy), ahora = ahoraMin(), out = [];
+  for (let i = 0; i < 5; i++) {
+    const fe = sumaDias(lun, i);
+    if (fe > hoy) break;
+    franjasDe(S.actor, fe).forEach(f => {
+      const t = S.idx.tramo[f.tramo_id] || {};
+      if (fe === hoy && minutos(t.hora_inicio) > ahora) return;   // aún no ha empezado
+      if (!registrosDe(S.actor, fe, f.tramo_id).length) out.push({ fecha: fe, tramo_id: f.tramo_id, orden: minutos(t.hora_inicio) });
+    });
+  }
+  return out.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.orden - b.orden);
+}
 function pintarTiles() {
   const c = $('#tiles');
   if (!c) return;
-  const lun = lunesDe(hoyIso()), dom = sumaDias(lun, 6);
-  const rs = S.d.registros.filter(r => r.docente_id === S.actor && !noHecha(r) && r.fecha >= lun && r.fecha <= dom);
-  const alus = new Set(); rs.forEach(r => aluIds(r).forEach(i => alus.add(i)));
+  const hoy = hoyIso(), lun = lunesDe(hoy);
+  let previstas = 0;
+  for (let i = 0; i < 5; i++) previstas += franjasDe(S.actor, sumaDias(lun, i)).length;
+  const reg = new Set(S.d.registros.filter(r => r.docente_id === S.actor && r.fecha >= lun && r.fecha <= sumaDias(lun, 6)).map(r => r.fecha + r.tramo_id)).size;
+  const rs = S.d.registros.filter(r => r.docente_id === S.actor && !noHecha(r) && r.fecha >= lun && r.fecha <= sumaDias(lun, 6));
   const v = rs.filter(r => +r.aprovechamiento > 0).map(r => +r.aprovechamiento);
   const med = v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toLocaleString('es-ES', { maximumFractionDigits: 1, minimumFractionDigits: 1 }) : '—';
+  const pend = pendientesSemana(), p0 = pend[0];
   const ic = d => '<span class="ti" aria-hidden="true"><svg viewBox="0 0 24 24">' + d + '</svg></span>';
   c.innerHTML =
-    '<div class="tile">' + ic('<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/>') + '<b>' + rs.length + '</b><span class="l">Sesiones esta semana</span><span class="s">Sesiones</span></div>' +
-    '<div class="tile">' + ic('<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 4a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>') + '<b>' + alus.size + '</b><span class="l">Alumnos atendidos</span><span class="s">Alumnos</span></div>' +
-    '<div class="tile">' + ic('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>') + '<b>' + med + (v.length ? '<sub>/5</sub>' : '') + '</b><span class="l">Aprovechamiento</span><span class="s">Media</span></div>';
+    (pend.length ? '<button class="tile tile-btn" id="tPend" aria-label="Registrar el pendiente del ' + esc(fechaCorta(p0.fecha)) + '">' + ic('<path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8"/>') +
+      '<b>' + pend.length + '</b><span class="l">Sin registrar · ir al primero</span><span class="s">Pendientes</span></button>'
+      : '<div class="tile">' + ic('<path d="m5 12 5 5L20 7"/>') + '<b>0</b><span class="l">Pendientes · al día</span><span class="s">Al día</span></div>') +
+    '<div class="tile">' + ic('<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/>') + '<b>' + reg + (previstas ? '<sub>/' + previstas + '</sub>' : '') + '</b><span class="l">Registradas esta semana</span><span class="s">Semana</span></div>' +
+    '<div class="tile">' + ic('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>') + '<b>' + med + (v.length ? '<sub>/5</sub>' : '') + '</b><span class="l">Aprovechamiento medio</span><span class="s">Media</span></div>';
+  const b = $('#tPend');
+  if (b) b.onclick = () => { if (S.f.fecha !== p0.fecha) cambiarFecha(p0.fecha); cambiarTramo(p0.tramo_id); toast('Pendiente: ' + relativa(p0.fecha) + ' a las ' + ((S.idx.tramo[p0.tramo_id] || {}).hora_inicio || '')); };
 }
 
 function cargarEdicion(r) {
@@ -216,7 +244,10 @@ function pintarSesion() {
   const g = S.idx.grupo[sel[0]], conjunto = sel.length > 1;
   const badge = !g ? '?' : g.nombre_corto.replace(/\s+/g, '').slice(0, 4) + (conjunto ? '<sup>+' + (sel.length - 1) + '</sup>' : '');
   const lista = arr => arr.length > 1 ? arr.slice(0, -1).join(', ') + ' y ' + arr[arr.length - 1] : arr.join('');
-  const ctx = '<div class="ctx"><div class="ctx-badge" aria-hidden="true">' + badge + '</div><div class="grow"><b>' +
+  const fd = franjaDestacada();
+  const repite = !f.cambiarGrupo && !!g && f.fecha === hoyIso() && fd && fd.tramo_id === f.tramo_id &&
+    gruposDeFranja(fd).slice().sort().join() === sel.slice().sort().join();
+  const ctx = repite ? '' : '<div class="ctx"><div class="ctx-badge" aria-hidden="true">' + badge + '</div><div class="grow"><b>' +
     (!g ? 'Elige el grupo' : conjunto ? 'Refuerzo conjunto · ' + esc(lista(sel.map(nombreGrupo))) : 'Refuerzo en ' + esc(g.nombre_largo || g.nombre_corto)) + '</b><small>' + esc(DIA_LARGO[diaDe(f.fecha)] || '') + ' · ' + esc(etiquetaTramo(t)) + (fr ? '' : ' · fuera de tu horario') + '</small></div>' +
     '<button class="btn sm" id="cambiaGrupo" aria-expanded="' + !!f.cambiarGrupo + '">' + (f.cambiarGrupo ? 'Listo' : 'Cambiar') + '</button></div>';
   // Al cambiar se pueden marcar varios grupos (refuerzo conjunto).
@@ -235,7 +266,8 @@ function pintarSesion() {
     '<div class="field-label mt"><span>Tramo</span><span class="hint">' + (franjas.length ? 'Marcados: tus refuerzos' : 'Sin refuerzos este día') + '</span></div>' +
     '<div class="tramos" id="tramos" role="group" aria-label="Tramo horario">' + tramos + '</div>' +
     '<div class="divider"></div>' + ctx + listaGrupos +
-    '<div class="field-label mt"><span>Alumnado</span><span class="hint" id="aluCount">' + resumenAlu() + '</span></div>' +
+    '<div class="field-label' + (repite ? '' : ' mt') + '"><span>Alumnado</span><span class="hint"><span id="aluCount">' + resumenAlu() + '</span>' +
+    (repite ? ' · <button class="linkbtn" id="cambiaGrupo" aria-expanded="false">Cambiar grupo</button>' : '') + '</span></div>' +
     '<div class="pills" role="group" aria-label="Alumnado">' + (pills || '<span class="muted" style="font-size:14px;padding:8px 0">' + (g ? 'No hay alumnado de refuerzo en este grupo todavía.' : 'Elige primero el grupo.') + '</span>') +
     '<button class="pill ghost" id="addAlu">' + IC.plus + 'Añadir</button></div>' +
     (f.sugeridos && f.sugeridos.length && !f.id ? '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Preseleccionado el alumnado de tu última sesión en esta franja.</p>' : '');
