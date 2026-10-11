@@ -15,6 +15,7 @@ S.f = null;
    mismo tramo hay varios grupos es un refuerzo conjunto (se juntan alumnos
    de esos cursos), así que sus grupos se unen en una sola franja. */
 function franjasDe(docId, fecha) {
+  if (!enCurso(fecha)) return [];   // festivo o fuera del periodo: no hay refuerzos
   const dia = diaDe(fecha), sem = tipoSemana(fecha), porTramo = {};
   S.d.horarios.filter(h => h.docente_id === docId && h.dia === dia && (!h.semana || !sem || h.semana === sem)).forEach(h => {
     const f = porTramo[h.tramo_id] = porTramo[h.tramo_id] || Object.assign({}, h, { grupo_ids: '' });
@@ -275,18 +276,20 @@ function pintarSesion() {
   const corto = a => { const k = nombrePildora(a.nombre); return cortos[k] > 1 ? nombrePildora(a.nombre, true) : k; };
   const pill = (a, ex) => '<button class="pill' + (ex ? ' extra' : '') + '" data-alu="' + esc(a.id) + '" title="' + esc(a.nombre) + '" aria-label="' + esc(a.nombre) + '" aria-pressed="' + (f.alumnos.indexOf(a.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(corto(a)) + (ex || conjunto ? ' <small>' + esc(nombreGrupo(a.grupo_id)) + '</small>' : '') + '</button>';
   const pills = alus.map(a => pill(a, false)).join('') + extra.map(a => pill(a, true)).join('');
+  const cerrado = diaCerrado();
   c.innerHTML =
     '<div class="field-label"><span>Día</span><span class="hint">' + (f.fecha !== fechaPorDefecto() ? '<button class="linkbtn" id="irHoy">Hoy</button> · ' : '') + '<button class="linkbtn" id="otraFecha">' + (f.fecha === hoy ? 'Otra fecha' : relativa(f.fecha) + ' · cambiar') + '</button></span></div>' +
     '<div class="days"><button class="arrow" data-sem="-7" aria-label="Semana anterior">' + IC.left + '</button>' + dias +
     '<button class="arrow" data-sem="7" aria-label="Semana siguiente"' + (sumaDias(lunes, 7) > hoy ? ' disabled style="opacity:.3"' : '') + '>' + IC.right + '</button></div>' +
-    '<div class="field-label mt"><span>Tramo</span><span class="hint">' + (franjas.length ? 'Marcados: tus refuerzos' : 'Sin refuerzos este día') + '</span></div>' +
+    (cerrado ? '<div class="banner" style="margin-top:14px">' + IC.info + '<span class="grow"><b>' + esc(motivoCerrado(f.fecha)) + '</b><br><small class="muted">Ese día no se anotan refuerzos.</small></span></div>' : '') +
+    (cerrado ? '' : '<div class="field-label mt"><span>Tramo</span><span class="hint">' + (franjas.length ? 'Marcados: tus refuerzos' : 'Sin refuerzos este día') + '</span></div>' +
     '<div class="tramos" id="tramos" role="group" aria-label="Tramo horario">' + tramos + '</div>' +
     '<div class="divider"></div>' + ctx + listaGrupos +
     '<div class="field-label' + (repite ? '' : ' mt') + '"><span>Alumnado</span><span class="hint"><span id="aluCount">' + resumenAlu() + '</span>' +
     (repite ? ' · <button class="linkbtn" id="cambiaGrupo" aria-expanded="false">Cambiar grupo</button>' : '') + '</span></div>' +
     '<div class="pills" role="group" aria-label="Alumnado">' + (pills || '<span class="muted" style="font-size:14px;padding:8px 0">' + (g ? 'No hay alumnado de refuerzo en este grupo todavía.' : 'Elige primero el grupo.') + '</span>') +
     '<button class="pill ghost" id="addAlu">' + IC.plus + 'Añadir</button></div>' +
-    (f.sugeridos && f.sugeridos.length && !f.id ? '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Preseleccionado el alumnado de tu última sesión en esta franja.</p>' : '');
+    (f.sugeridos && f.sugeridos.length && !f.id ? '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Preseleccionado el alumnado de tu última sesión en esta franja.</p>' : ''));
 
   c.querySelectorAll('[data-fecha]').forEach(b => b.onclick = () => cambiarFecha(b.dataset.fecha));
   c.querySelectorAll('[data-sem]').forEach(b => b.onclick = () => {
@@ -296,6 +299,7 @@ function pintarSesion() {
   });
   $('#otraFecha').onclick = () => elegirFecha(f.fecha);
   const ih = $('#irHoy'); if (ih) ih.onclick = () => cambiarFecha(fechaPorDefecto());
+  if (cerrado) return;
   c.querySelectorAll('[data-tramo]').forEach(b => b.onclick = () => cambiarTramo(b.dataset.tramo));
   c.querySelectorAll('[data-grupo]').forEach(b => b.onclick = () => {
     const s = gruposSel(S.f), id = b.dataset.grupo, i = s.indexOf(id);
@@ -372,8 +376,18 @@ function cambiarTramo(tramo) {
 }
 
 /* ---------- Tarjeta derecha: qué se ha hecho ---------- */
+/* Día sin refuerzos (festivo, fuera del periodo o semana no lectiva). */
+const diaCerrado = () => !S.f.id && !enCurso(S.f.fecha);
+function motivoCerrado(fe) {
+  const c = S.d.calendario || {};
+  if (esFestivo(fe)) return 'Festivo';
+  if ((c.inicio && fe < c.inicio) || (c.fin && fe > c.fin)) return 'Fuera del periodo de refuerzos' + (c.inicio && c.fin ? ' (' + fechaCorta(c.inicio) + ' – ' + fechaCorta(c.fin) + ')' : '');
+  return 'Semana no lectiva';
+}
 function pintarContenido() {
   const f = S.f, c = $('#cContenido');
+  c.hidden = diaCerrado();
+  if (c.hidden) return;
   const mats = S.d.materias.map(m => '<button class="pill mat ' + claseMateria(m) + '" data-mat="' + esc(m) + '" aria-pressed="' + (f.materia === m) + '">' + esc(m) + '</button>').join('');
   let stars = '';
   for (let i = 1; i <= 5; i++) stars += '<button class="star' + (i <= f.estrellas ? ' on' : '') + '" data-star="' + i + '" role="radio" aria-checked="' + (i === f.estrellas) + '" aria-label="' + i + ' — ' + NIVELES[i] + '">' + IC.star + '</button>';
@@ -486,6 +500,7 @@ function pintarBanner() {
 function pintarSavebar() {
   const f = S.f, sb = $('#savebar');
   if (!sb) return;
+  if (diaCerrado()) { sb.hidden = true; return; }
   const no = f.estado === 'no_realizada';
   const falta = no ? (!f.motivo ? 'Indica el motivo' : '') : !f.alumnos.length ? 'Selecciona alumnado' : !f.materia ? 'Elige la materia' : !f.estrellas ? 'Valora el aprovechamiento' : '';
   // La barra solo aparece cuando ya hay algo escrito (o, si no se realizó, con el motivo elegido).

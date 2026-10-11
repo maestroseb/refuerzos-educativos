@@ -220,7 +220,7 @@ svg { flex: none; }
 .day.today { border-color: var(--line-2); }
 .day[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .day[aria-pressed="true"] small { color: inherit; opacity: .7; }
-.day[aria-pressed="true"] .dot { background: var(--bg); }
+.day[aria-pressed="true"].has .dot { background: var(--bg); }
 .day[disabled] { opacity: .35; cursor: default; }
 .arrow { display: grid; place-items: center; width: 34px; border-radius: 12px; color: var(--ink-2); }
 .arrow:hover { background: var(--bg-2); }
