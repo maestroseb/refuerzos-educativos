@@ -5,25 +5,72 @@
    Comparte filtros con el Diario.
    ===================================================================== */
 VISTAS.datos = function(el) {
-  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Datos y estadísticas</div><h1 class="h1">Cómo van los <em>refuerzos</em></h1></header><div id="fBar"></div><div id="dBody"></div>';
+  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Datos y estadísticas</div><h1 class="h1">Cómo van los <em>refuerzos</em></h1></header><div id="cCump"></div><div id="fBar"></div><div id="dBody"></div>';
+  pintarCumplimiento();
   const pintaBarra = () => { const fb = $('#fBar'); fb.innerHTML = ''; fb.appendChild(barraFiltros(full => { if (full) pintaBarra(); pintarDatos(); }, false)); };
   pintaBarra();
   pintarDatos();
 };
 
-/* Sesiones previstas por horario entre dos fechas (aprox.: no descuenta festivos). */
+/* Sesiones previstas por horario entre dos fechas (sin festivos ni días fuera del periodo). */
 function previstas(docId, a, b) {
   const fr = S.d.horarios.filter(h => !docId || h.docente_id === docId);
   if (!fr.length) return 0;
   let n = 0;
   for (let f = a; f <= b; f = sumaDias(f, 1)) {
     const dia = diaDe(f);
-    if (!dia) continue;
+    if (!dia || !enCurso(f)) continue;
     const sem = tipoSemana(f);
     fr.forEach(h => { if (h.dia === dia && (!h.semana || !sem || h.semana === sem)) n++; });
   }
   return n;
 }
+/* ---------- Cumplimiento por docente (solo administración) ---------- */
+let mesCump = '';
+function pendientesDocente(docId, mes) {
+  const hoy = hoyIso(), ahora = ahoraMin(), [y, m] = mes.split('-').map(Number), ult = iso(new Date(y, m, 0, 12));
+  let prev = 0; const pend = [];
+  for (let f = mes + '-01'; f <= ult && f <= hoy; f = sumaDias(f, 1)) {
+    if (!enCurso(f)) continue;
+    franjasDe(docId, f).forEach(fr => {
+      const t = S.idx.tramo[fr.tramo_id] || {};
+      if (f === hoy && minutos(t.hora_inicio) > ahora) return;
+      prev++;
+      if (!registrosDe(docId, f, fr.tramo_id).length) pend.push({ f, t, g: fr.grupo_ids });
+    });
+  }
+  return { prev, pend };
+}
+function pintarCumplimiento() {
+  const c = $('#cCump');
+  if (!c) return;
+  if (!S.d.yo.admin) { c.innerHTML = ''; return; }
+  const hoy = hoyIso();
+  if (!mesCump) mesCump = hoy.slice(0, 7);
+  const [y, m] = mesCump.split('-').map(Number);
+  const prevM = iso(new Date(y, m - 2, 1, 12)).slice(0, 7), nextM = iso(new Date(y, m, 1, 12)).slice(0, 7);
+  const ids = Array.from(new Set(S.d.horarios.map(h => h.docente_id))).filter(id => S.idx.doc[id]);
+  const filas = ids.map(id => Object.assign({ id }, pendientesDocente(id, mesCump))).filter(x => x.prev)
+    .sort((a, b) => b.pend.length - a.pend.length || nombreDocId(a.id).localeCompare(nombreDocId(b.id), 'es'));
+  const tp = filas.reduce((s, x) => s + x.prev, 0), tq = filas.reduce((s, x) => s + x.pend.length, 0);
+  const pct = x => x.prev ? Math.round((x.prev - x.pend.length) * 100 / x.prev) : 100;
+  c.innerHTML = '<section class="card cump reveal" aria-label="Cumplimiento por docente"><div class="cal-h"><button class="arrow" data-cm="' + prevM + '" aria-label="Mes anterior">' + IC.left + '</button>' +
+    '<div class="grow"><b>Cumplimiento · ' + MESES_L[m - 1] + ' ' + y + '</b><small>' + (filas.length ? (tp - tq) + ' de ' + tp + ' refuerzos anotados · ' + filas.filter(x => x.pend.length).length + ' docentes con pendientes' : 'Sin refuerzos previstos este mes') + '</small></div>' +
+    '<button class="arrow" data-cm="' + nextM + '" aria-label="Mes siguiente"' + (nextM > hoy.slice(0, 7) ? ' disabled' : '') + '>' + IC.right + '</button></div>' +
+    (filas.length ? '<div class="cump-t"><div class="cump-r cump-hd"><span>Docente</span><span>Anotados</span><span>Progreso</span><span>Pendientes</span></div>' +
+      filas.map(x => '<button class="cump-r" data-cd="' + esc(x.id) + '"><span class="cump-n"><span class="ini">' + esc(iniciales(nombreDocId(x.id))) + '</span><span class="cump-nt">' + esc((S.idx.doc[x.id].nombre_completo || nombreDocId(x.id))) + '</span></span>' +
+        '<span class="num">' + (x.prev - x.pend.length) + ' / ' + x.prev + '</span>' +
+        '<span class="cump-bar"><i style="width:' + pct(x) + '%;background:' + (pct(x) === 100 ? 'var(--ok)' : pct(x) >= 75 ? 'var(--star)' : 'var(--danger)') + '"></i><em class="num">' + pct(x) + '%</em></span>' +
+        '<span>' + (x.pend.length ? '<span class="tag" style="--c:var(--danger)">' + x.pend.length + '</span>' : '<span class="tag" style="--c:var(--ok)">Al día</span>') + '</span></button>').join('') + '</div>' : '') + '</section>';
+  c.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { mesCump = b.dataset.cm; pintarCumplimiento(); });
+  c.querySelectorAll('[data-cd]').forEach(b => b.onclick = () => {
+    const x = filas.find(r => r.id === b.dataset.cd), d = S.idx.doc[x.id];
+    abrirHoja(cabHoja(esc(d.nombre_completo || nombreDocId(x.id)), esc((x.prev - x.pend.length) + ' de ' + x.prev + ' anotados en ' + MESES_L[m - 1]) + (d.email ? ' · ' + esc(d.email) : '')) +
+      (x.pend.length ? '<div class="list">' + x.pend.map(p => '<div class="row"><span class="grow"><b>' + esc(fechaLarga(p.f)) + '</b><small>' + esc(etiquetaTramo(p.t) + ' · ' + nombreGrupo(p.g)) + '</small></span></div>').join('') + '</div>' : '<p class="muted">Todo anotado este mes.</p>') +
+      (d.email && x.pend.length ? '<div class="sheet-foot"><a class="btn primary" href="mailto:' + esc(d.email) + '?subject=' + encodeURIComponent('Refuerzos pendientes de anotar') + '&body=' + encodeURIComponent('Hola, te faltan por anotar estos refuerzos:\n\n' + x.pend.map(p => '- ' + fechaLarga(p.f) + ', ' + etiquetaTramo(p.t) + ' (' + nombreGrupo(p.g) + ')').join('\n') + '\n\nGracias.') + '">Enviar recordatorio</a></div>' : ''));
+  });
+}
+
 function rangoEfectivo(regs) {
   let [a, b] = rangoFechas();
   const hoy = hoyIso(), primero = S.d.registros.length ? S.d.registros[S.d.registros.length - 1].fecha : hoy;
