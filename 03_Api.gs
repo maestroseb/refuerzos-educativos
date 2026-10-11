@@ -84,7 +84,7 @@ function sustituciones() {
 // Por nombre (se resuelven al llamar: algunas están en archivos posteriores).
 const OPS_LOTE_ = ['guardarRegistro', 'borrarRegistro', 'guardarAlumno', 'importarAlumnado', 'borrarAlumno',
   'guardarDocente', 'borrarDocente', 'guardarHorarioDocente', 'guardarAjustes', 'activarSincroDiaria',
-  'guardarTramo', 'borrarTramo', 'guardarGrupo', 'borrarGrupo'];
+  'guardarTramo', 'borrarTramo', 'guardarGrupo', 'borrarGrupo', 'ordenarGrupos'];
 function lote(ops, curso) {
   if (!Array.isArray(ops) || ops.length > 50) throw new Error('Lote no válido.');
   // Si entre tanto se ha iniciado otro curso, lo de la pestaña vieja no se guarda en el nuevo.
@@ -340,6 +340,21 @@ function borrarTramo(id) {
 function guardarGrupo(g) {
   exigirAdmin_();
   return conCandado_(function() { previa_(HOJAS.GRUPOS, g.id); return guardar_(HOJAS.GRUPOS, g); });
+}
+
+/** Reordena los grupos: `ids` en el orden deseado (los que falten van al final). */
+function ordenarGrupos(ids) {
+  exigirAdmin_();
+  return conCandado_(function() {
+    const pos = {};
+    (ids || []).forEach(function(id, i) { pos[id] = i + 1; });
+    const fs = filas_(HOJAS.GRUPOS).map(limpio_);
+    fs.forEach(function(g) { g.orden = pos[g.id] || (fs.length + (+g.orden || 0)); });
+    fs.sort(function(a, b) { return a.orden - b.orden; });
+    fs.forEach(function(g, i) { g.orden = i + 1; });
+    reemplazar_(HOJAS.GRUPOS, fs);
+    return true;
+  });
 }
 
 function borrarGrupo(id) {

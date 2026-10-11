@@ -221,13 +221,45 @@ function editarAlumno(a) {
   $('#aDel', inn).onclick = async () => { if (!(await confirmar('Si tiene sesiones registradas se archivará en lugar de borrarse.', 'Eliminar'))) return; cerrarHoja(); hacer('borrarAlumno', [a.id], usaAlumno(a.id) ? 'Archivado (tiene registros)' : 'Eliminado', a.nombre); };
 }
 
+/* Lista reordenable arrastrando el asa (ratón o dedo) o con las flechas del teclado. */
+function ordenArrastrable(lista, alCambiar) {
+  const ids = () => [...lista.children].map(x => x.dataset.id);
+  let antes = '';
+  const fin = () => { const n = ids(); if (n.join() !== antes) alCambiar(n); };
+  lista.querySelectorAll('.grip').forEach(asa => {
+    const fila = asa.parentNode;
+    asa.onpointerdown = e => {
+      // Escucha en document: al mover la fila en el DOM se perdería la captura del puntero.
+      e.preventDefault(); antes = ids().join(); fila.classList.add('drag');
+      const mover = ev => {
+        const pri = lista.firstElementChild, ult = lista.lastElementChild;
+        if (ev.clientY < pri.getBoundingClientRect().top) return pri !== fila && lista.insertBefore(fila, pri);
+        if (ev.clientY > ult.getBoundingClientRect().bottom) return ult !== fila && lista.appendChild(fila);
+        for (const o of lista.children) {
+          if (o === fila) continue;
+          const r = o.getBoundingClientRect();
+          if (ev.clientY > r.top && ev.clientY < r.bottom) { lista.insertBefore(fila, ev.clientY < r.top + r.height / 2 ? o : o.nextSibling); break; }
+        }
+      };
+      const soltar = () => { document.removeEventListener('pointermove', mover); document.removeEventListener('pointerup', soltar); document.removeEventListener('pointercancel', soltar); fila.classList.remove('drag'); fin(); };
+      document.addEventListener('pointermove', mover); document.addEventListener('pointerup', soltar); document.addEventListener('pointercancel', soltar);
+    };
+    asa.onkeydown = e => {
+      const d = e.key === 'ArrowUp' ? fila.previousElementSibling : e.key === 'ArrowDown' ? fila.nextElementSibling : null;
+      if (!d) return; e.preventDefault(); antes = ids().join();
+      lista.insertBefore(fila, e.key === 'ArrowUp' ? d : d.nextSibling); asa.focus(); fin();
+    };
+  });
+}
+
 /* ---------- Tramos y grupos (por si no hay hoja madre) ---------- */
 function ajEstructura(c) {
-  c.innerHTML = '<p class="muted" style="margin:0 0 14px;font-size:13.5px">' + (S.d.madreId ? 'Estos datos vienen de la hoja madre y se sustituyen al sincronizar.' : 'Si no usáis la hoja madre, crea aquí los tramos horarios y los grupos.') + '</p>' +
+  c.innerHTML = '<p class="muted" style="margin:0 0 14px;font-size:13.5px">' + (S.d.madreId ? 'Estos datos vienen de la hoja madre y se actualizan al sincronizar (el orden de los grupos se conserva).' : 'Si no usáis la hoja madre, crea aquí los tramos horarios y los grupos.') + '</p>' +
     '<div class="grid2" style="align-items:start"><section class="card"><div class="field-label"><span>Tramos</span><button class="btn sm" id="tNew">' + IC.plus + 'Añadir</button></div><div class="list">' +
     S.d.tramos.map(t => '<button class="row" data-t="' + esc(t.id) + '"><span class="grow"><b class="num">' + esc(etiquetaTramo(t)) + '</b><small>' + (String(t.es_recreo) === 'true' ? 'Recreo' : esc(t.etiqueta || '')) + '</small></span>' + IC.right.replace('<svg', '<svg class="chev"') + '</button>').join('') + '</div></section>' +
-    '<section class="card"><div class="field-label"><span>Grupos</span><button class="btn sm" id="gNew">' + IC.plus + 'Añadir</button></div><div class="list">' +
-    S.d.grupos.map(g => '<button class="row" data-g="' + esc(g.id) + '"><span class="ini">' + esc(g.nombre_corto.slice(0, 3)) + '</span><span class="grow"><b>' + esc(g.nombre_largo || g.nombre_corto) + '</b></span>' + IC.right.replace('<svg', '<svg class="chev"') + '</button>').join('') + '</div></section></div>';
+    '<section class="card"><div class="field-label"><span>Grupos</span><button class="btn sm" id="gNew">' + IC.plus + 'Añadir</button></div><p class="muted" style="margin:0 0 6px;font-size:12.5px">Arrastra <span class="grip-i">' + IC.grip + '</span> para cambiar el orden.</p><div class="list" id="gList">' +
+    S.d.grupos.map(g => '<div class="row-ord" data-id="' + esc(g.id) + '"><span class="grip" aria-label="Mover ' + esc(g.nombre_corto) + '" role="button" tabindex="0">' + IC.grip + '</span><button class="row" data-g="' + esc(g.id) + '"><span class="ini">' + esc(g.nombre_corto.slice(0, 3)) + '</span><span class="grow"><b>' + esc(g.nombre_largo || g.nombre_corto) + '</b></span>' + IC.right.replace('<svg', '<svg class="chev"') + '</button></div>').join('') + '</div></section></div>';
+  ordenArrastrable($('#gList', c), ids => hacer('ordenarGrupos', [ids], 'Orden guardado'));
   const tramo = t => {
     const inn = abrirHoja(cabHoja(t.id ? 'Editar tramo' : 'Nuevo tramo') + '<div class="grid2"><div><label class="lbl">Empieza</label><input class="input" type="time" id="ti" value="' + esc(t.hora_inicio || '') + '"></div><div><label class="lbl">Termina</label><input class="input" type="time" id="tf" value="' + esc(t.hora_fin || '') + '"></div><div><label class="lbl">Etiqueta</label><input class="input" id="te" value="' + esc(t.etiqueta || '') + '" placeholder="1ª sesión"></div><div><label class="lbl">Orden</label><input class="input" type="number" id="to" value="' + esc(t.orden || S.d.tramos.length + 1) + '"></div></div>' +
       '<label class="switch"><span><b style="font-weight:600">Es recreo</b></span><input type="checkbox" id="tr"' + (String(t.es_recreo) === 'true' ? ' checked' : '') + '></label>' +
