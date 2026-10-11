@@ -280,7 +280,7 @@ function pintarSesion() {
   const pills = alus.map(a => pill(a, false)).join('') + extra.map(a => pill(a, true)).join('');
   const cerrado = diaCerrado();
   c.innerHTML =
-    '<div class="field-label"><span>Día</span><span class="hint">' + (f.fecha !== fechaPorDefecto() ? '<button class="linkbtn" id="irHoy">Hoy</button> · ' : '') + '<button class="linkbtn" id="otraFecha">' + (f.fecha === hoy ? 'Otra fecha' : relativa(f.fecha) + ' · cambiar') + '</button></span></div>' +
+    '<div class="field-label"><span>Día · <b class="mes-lbl">' + esc(mesSemana(lunes)) + '</b></span><span class="hint">' + (f.fecha !== fechaPorDefecto() ? '<button class="linkbtn" id="irHoy">Hoy</button> · ' : '') + '<button class="linkbtn" id="otraFecha">' + (f.fecha === hoy ? 'Otra fecha' : relativa(f.fecha) + ' · cambiar') + '</button></span></div>' +
     '<div class="days"><button class="arrow" data-sem="-7" aria-label="Semana anterior">' + IC.left + '</button>' + dias +
     '<button class="arrow" data-sem="7" aria-label="Semana siguiente"' + (sumaDias(lunes, 7) > hoy ? ' disabled style="opacity:.3"' : '') + '>' + IC.right + '</button></div>' +
     (cerrado ? '<div class="banner" style="margin-top:14px">' + IC.info + '<span class="grow"><b>' + esc(motivoCerrado(f.fecha)) + '</b><br><small class="muted">Ese día no se anotan refuerzos.</small></span></div>' : '') +
@@ -357,6 +357,12 @@ function rejillaMes(mes, sel) {
       ' aria-label="' + esc(fechaLarga(f)) + (est === 'pend' ? ', falta por anotar' : est === 'ok' ? ', completo' : fest ? ', festivo' : '') + '"><b>' + deIso(f).getDate() + '</b><i></i></button>';
   }
   return { html: '<div class="cal-g">' + ['L', 'M', 'X', 'J', 'V'].map(d => '<span class="cal-w">' + d + '</span>').join('') + celdas + '</div>', pend, ok };
+}
+/* Mes (o meses) de la semana visible: «Octubre 2026» o «Sep – Oct 2026». */
+function mesSemana(lunes) {
+  const a = deIso(lunes), b = deIso(sumaDias(lunes, 4)), cap = t => t.replace(/^./, x => x.toUpperCase());
+  if (a.getMonth() === b.getMonth()) return cap(MESES_L[a.getMonth()]) + ' ' + a.getFullYear();
+  return cap(MESES[a.getMonth()]) + (a.getFullYear() !== b.getFullYear() ? ' ' + a.getFullYear() : '') + ' – ' + cap(MESES[b.getMonth()]) + ' ' + b.getFullYear();
 }
 function cambiarFecha(fecha) {
   if (S.f.id) S.f = nuevoForm(fecha);
