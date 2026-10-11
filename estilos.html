@@ -716,5 +716,28 @@ button.ahora:active { transform: scale(.985); }
 .cal-ley span { display: inline-flex; align-items: center; gap: 6px; }
 .cal-ley i { width: 7px; height: 7px; border-radius: 50%; }
 .cal-ley i.e-pend { background: var(--danger); } .cal-ley i.e-ok { background: var(--ok); } .cal-ley i.fest { background: var(--line-2); }
-@media (min-width: 1024px) { .cal { max-width: 460px; } }
+@media (min-width: 1024px) {
+  .dlay { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .dlay.sin-lado { grid-template-columns: minmax(0, 1fr); } .dlay.sin-lado .dside { display: none; } .dlay.sin-lado .dmain .entries { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+  .dside { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .dside .cal { margin: 0; }
+  .dmain .entries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Filtros compactos encima de las sesiones */
+  .dmain .filters { gap: 6px; padding-bottom: 4px; }
+  .dmain .filters .select.sm, .dmain .filters .input.sm { height: 32px; min-height: 32px; padding-top: 0; padding-bottom: 0; font-size: 12.5px; border-radius: 10px; max-width: 170px; }
+  .dmain .filters .seg { padding: 3px; } .dmain .filters .seg button { padding: 4px 10px; font-size: 12.5px; min-height: 26px; }
+  .dmain .filters .btn.sm { min-height: 32px; padding: 4px 12px; font-size: 12.5px; }
+  .dmain .search .input { height: 34px; min-height: 34px; font-size: 13px; }
+}
+.pendc { padding: 16px 18px; }
+.plist { display: flex; flex-direction: column; gap: 4px; }
+.prow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; text-align: left; }
+.prow:hover { background: var(--surface-2); }
+.prow .grow { flex: 1; min-width: 0; }
+.prow b { display: block; font-size: 14px; font-weight: 600; }
+.prow small { color: var(--muted); font-size: 12.5px; }
+.prow .btn { pointer-events: none; }
+.pks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pk b { display: block; font: 600 22px/1.1 var(--f-display); }
+.pk small { color: var(--muted); font-size: 12px; }
 </style>
