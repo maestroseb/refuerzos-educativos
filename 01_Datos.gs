@@ -124,8 +124,12 @@ function reemplazar_(nombre, nuevas, quitar) {
  *  devuelve la fila previa con ese id, si existe (reintento o edición). */
 function previa_(nombre, id) {
   if (!id) return null;
+  const f = filas_(nombre).filter(function(x) { return x.id === id; })[0];
+  if (f) return f;
+  // Solo las altas nuevas deben traer un id con formato del navegador; los ya
+  // existentes (p. ej. los de la hoja madre: «DOC_001») se aceptan tal cual.
   if (!/^[a-z0-9-]{6,40}$/i.test(String(id))) throw new Error('Id no válido.');
-  return filas_(nombre).filter(function(f) { return f.id === id; })[0] || null;
+  return null;
 }
 
 function nuevoId_() { return Utilities.getUuid().slice(0, 8); }

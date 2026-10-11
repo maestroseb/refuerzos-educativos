@@ -105,7 +105,7 @@ function guardarRegistro(r) {
       trabajado: String(r.trabajado || '').slice(0, 5000),
       aprovechamiento: noRealizada ? 0 : Math.max(0, Math.min(5, Number(r.aprovechamiento) || 0)),
       alumnos_txt: ids.map(function(i) { return alumnos[i] || i; }).join(', '),
-      docente_txt: doc ? (doc.nombre_completo || doc.nombre_corto) : '',
+      docente_txt: doc ? (doc.nombre_completo || doc.nombre_corto) + (a.yo.comoSustituto && doc.sustituto ? ' (sust.: ' + doc.sustituto + ')' : '') : '',
       email: a.yo.email,
       actualizado: ahora
     };

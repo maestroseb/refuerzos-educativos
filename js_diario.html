@@ -57,7 +57,7 @@ function detalleRegistro(id) {
     (noHecha(r) ? '<div class="banner warn">' + IC.info + '<span class="grow">Sesión no realizada · <b>' + esc(r.motivo) + '</b></span></div>' :
     '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><span class="tag" style="--c:' + colorMateria(r.materia) + ';font-size:14px">' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) + '<span class="muted" style="font-size:13.5px">' + esc(NIVELES[+r.aprovechamiento] || 'Sin valorar') + '</span></div>') +
     '<p style="white-space:pre-line;margin:0;font-size:16px;line-height:1.6">' + (r.trabajado ? esc(r.trabajado) : '<span class="muted">Sin descripción.</span>') + '</p>' +
-    '<p class="muted" style="font-size:12px;margin:0">Registrado ' + esc(String(r.creado || '').replace('T', ' ').slice(0, 16)) + (r.actualizado && r.actualizado !== r.creado ? ' · editado ' + esc(String(r.actualizado).replace('T', ' ').slice(0, 16)) : '') + '</p></div>' +
+    '<p class="muted" style="font-size:12px;margin:0">Registrado ' + esc(String(r.creado || '').replace('T', ' ').slice(0, 16)) + porSustituto(r) + (r.actualizado && r.actualizado !== r.creado ? ' · editado ' + esc(String(r.actualizado).replace('T', ' ').slice(0, 16)) : '') + '</p></div>' +
     (r._pend ? '<p class="muted" style="font-size:13px;margin:16px 0 0">Guardándose en la hoja… En un momento podrás editarlo o borrarlo.</p>' : puedoEditar(r) ? '<div class="sheet-foot"><button class="btn danger" id="del">Borrar</button><button class="btn primary" id="edit">' + IC.edit + 'Editar</button></div>' : ''));
   inn.querySelectorAll('[data-ficha]').forEach(b => b.onclick = () => fichaAlumno(b.dataset.ficha));
   const e = $('#edit', inn);
@@ -68,6 +68,12 @@ function detalleRegistro(id) {
     hacer('borrarRegistro', [r.id], 'Registro borrado');
     if (S.view !== 'diario') ir(S.view, { keepScroll: true });
   };
+}
+
+/* Si lo anotó el sustituto/a (entra con su email y actúa como el titular). */
+function porSustituto(r) {
+  const d = S.idx.doc[r.docente_id];
+  return d && d.sustituto && r.email && String(r.email).toLowerCase() === String(d.sustituto_email || '').toLowerCase() ? ' por ' + esc(d.sustituto) + ' (sustitución)' : '';
 }
 
 function exportarCSV(regs) {
