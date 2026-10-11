@@ -9,7 +9,8 @@ function yo_() {
   if (yoMemo_) return yoMemo_;
   const email = String(Session.getActiveUser().getEmail() || '').toLowerCase().trim();
   const duenio = String(Session.getEffectiveUser().getEmail() || '').toLowerCase().trim();
-  const docentes = filas_(HOJAS.DOCENTES);
+  // Los docentes desactivados no entran.
+  const docentes = filas_(HOJAS.DOCENTES).filter(function(d) { return d.activo === '' || si_(d.activo); });
   let docente = null, comoSustituto = false;
   if (email) {
     docente = docentes.filter(function(d) { return String(d.sustituto_email).toLowerCase().trim() === email; })[0] || null;

@@ -4,6 +4,7 @@ const fs = require('fs'), path = require('path');
 const R = path.join(__dirname, '..'), OUT = path.join(__dirname, 'out');
 fs.mkdirSync(OUT, { recursive: true });
 let html = fs.readFileSync(path.join(R, 'index.html'), 'utf8')
+  .replace(/<\?!= JSON.stringify\(yoEmail\) \?>/g, '"doc0@g.educaand.es"')
   .replace(/<\?!= include\('([^']+)'\); \?>/g, (_, f) => fs.readFileSync(path.join(R, f + '.html'), 'utf8'));
 html = html.replace('<head>', '<head><script>' + fs.readFileSync(path.join(__dirname, 'mock.js'), 'utf8') + '</script>');
 fs.writeFileSync(path.join(OUT, 'index.html'), html);

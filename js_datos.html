@@ -15,15 +15,13 @@ VISTAS.datos = function(el) {
 
 /* Sesiones previstas por horario entre dos fechas (sin festivos ni días fuera del periodo). */
 function previstas(docId, a, b) {
-  const fr = S.d.horarios.filter(h => !docId || h.docente_id === docId);
-  if (!fr.length) return 0;
+  const ids = docId ? [docId] : Array.from(new Set(S.d.horarios.map(h => h.docente_id)));
+  const hoy = hoyIso(), ahora = ahoraMin();
   let n = 0;
-  for (let f = a; f <= b; f = sumaDias(f, 1)) {
-    const dia = diaDe(f);
-    if (!dia || !enCurso(f)) continue;
-    const sem = tipoSemana(f);
-    fr.forEach(h => { if (h.dia === dia && (!h.semana || !sem || h.semana === sem)) n++; });
-  }
+  // Una sesión por docente y tramo (un refuerzo conjunto cuenta una vez); hoy, solo lo ya empezado.
+  for (let f = a; f <= b && f <= hoy; f = sumaDias(f, 1)) ids.forEach(id => {
+    franjasDe(id, f).forEach(fr => { if (f < hoy || minutos((S.idx.tramo[fr.tramo_id] || {}).hora_inicio) <= ahora) n++; });
+  });
   return n;
 }
 /* ---------- Cumplimiento por docente (solo administración) ---------- */
@@ -90,9 +88,11 @@ function pintarDatos() {
   const [a, b] = rangoEfectivo(regs);
   const valorados = regs.filter(r => +r.aprovechamiento > 0);
   const alus = new Set(); regs.forEach(r => aluIds(r).forEach(i => alus.add(i)));
-  const docFiltro = F.quien === 'mios' ? S.actor : F.docente;
-  const prev = (F.grupo || F.alumno || F.materia) ? 0 : previstas(docFiltro, a, b);
-  const enRango = regs.filter(r => r.fecha >= a && r.fecha <= b);
+  // Sin administración solo llegan sus registros y los de sus grupos: se compara con su propio horario.
+  const docFiltro = !S.d.yo.admin || F.quien === 'mios' ? S.actor : F.docente;
+  const prev = (F.grupo || F.alumno || F.materia || F.estado || F.q) ? 0 : previstas(docFiltro, a, b);
+  // Anotadas (también las no realizadas), igual que el calendario y el cumplimiento por docente.
+  const enRango = todos.filter(r => r.fecha >= a && r.fecha <= b && (!docFiltro || r.docente_id === docFiltro));
   const sesionesUnicas = new Set(enRango.map(r => r.docente_id + r.fecha + r.tramo_id)).size;
   const cumpl = prev ? Math.min(100, Math.round(sesionesUnicas / prev * 100)) : null;
 
@@ -108,7 +108,7 @@ function pintarDatos() {
     '<section class="card chart-card"><h3>Cuándo se refuerza</h3><p class="sub">Sesiones por día y tramo</p><div id="chHeat"></div></section>' +
     (noRe.length ? '<section class="card chart-card"><h3>Sesiones no realizadas</h3><p class="sub">' + noRe.length + ' en el periodo · por motivo y docente</p><div id="chNo"></div></section>' : '') + '</div>' +
     '<section class="card" style="margin-top:14px"><div class="field-label"><span>Alumnado</span><span class="hint">Toca para ver su ficha</span></div><div class="table-wrap" id="tAlu"></div></section>' +
-    (F.quien === 'todos' && !F.docente ? '<section class="card" style="margin-top:14px"><div class="field-label"><span>Profesorado</span><span class="hint">Previstas según horario, sin descontar festivos</span></div><div class="table-wrap" id="tDoc"></div></section>' : '');
+    (S.d.yo.admin && F.quien === 'todos' && !F.docente ? '<section class="card" style="margin-top:14px"><div class="field-label"><span>Profesorado</span><span class="hint">Previstas según horario, sin festivos</span></div><div class="table-wrap" id="tDoc"></div></section>' : '');
 
   graficoSemanas($('#chSem'), regs, a, b);
   graficoMaterias($('#chMat'), regs);
@@ -294,7 +294,7 @@ function fichaAlumno(id) {
   const v = regs.filter(r => +r.aprovechamiento > 0).map(r => +r.aprovechamiento);
   const mats = {}; regs.forEach(r => mats[r.materia] = (mats[r.materia] || 0) + 1);
   const docs = new Set(regs.map(r => r.docente_id));
-  const cron = regs.slice().reverse();
+  const cron = regs.filter(r => +r.aprovechamiento > 0).reverse();   // las sin valorar no se dibujan
   let spark = '';
   if (cron.length > 1) {
     const W = 600, H = 90, P = 8, x = i => P + (W - 2 * P) * i / (cron.length - 1), y = s => H - P - (H - 2 * P) * ((s || 3) - 1) / 4;
@@ -311,6 +311,6 @@ function fichaAlumno(id) {
     '<div class="hist" style="margin-top:18px">' + (regs.map(r => '<div class="hist-i" style="--c:' + colorMateria(r.materia) + '"><span class="bar"></span><div><div class="meta"><b style="color:var(--ink);font-weight:600">' + esc(fechaLarga(r.fecha)) + '</b><span>' + esc(r.materia) + '</span>' + miniEstrellas(+r.aprovechamiento) + '<span>' + esc(nombreDocId(r.docente_id)) + '</span></div>' + (r.trabajado ? '<p style="-webkit-line-clamp:unset;white-space:pre-line">' + esc(r.trabajado) + '</p>' : '') + '</div></div>').join('') || '<p class="muted">Sin sesiones registradas.</p>') + '</div>' +
     '<div class="sheet-foot no-print"><button class="btn" id="fDiario">Ver en el diario</button><button class="btn primary" id="fPrint">' + IC.print + 'Imprimir / PDF</button></div>', { wide: true });
   $('#fPrint', inn).onclick = () => { document.body.classList.add('printing'); window.print(); setTimeout(() => document.body.classList.remove('printing'), 500); };
-  $('#fDiario', inn).onclick = () => { cerrarHoja(); Object.assign(F, { alumno: id, grupo: '', quien: 'todos', docente: '', materia: '', q: '' }); guardaF(); ir('diario'); };
+  $('#fDiario', inn).onclick = () => { cerrarHoja(); Object.assign(F, { alumno: id, grupo: '', quien: 'todos', docente: '', materia: '', estado: '', rango: 'curso', q: '' }); guardaF(); ir('diario'); };
 }
 </script>

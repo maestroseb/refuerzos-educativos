@@ -41,7 +41,12 @@ function ajGeneral(c) {
   let mats = d.materias.slice();
   const gm = () => hacer('guardarAjustes', [{ materias: mats.slice() }], 'Materias guardadas');
   c.querySelectorAll('[data-quita]').forEach(b => b.onclick = () => { if (mats.length < 2) return; mats = mats.filter(m => m !== b.dataset.quita); gm(); });
-  $('#nuevaMat').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) { mats.push(e.target.value.trim()); gm(); } };
+  $('#nuevaMat').onkeydown = e => {
+    const v = e.target.value.trim().replace(/\|/g, ' ');
+    if (e.key !== 'Enter' || !v) return;
+    if (mats.some(m => m.toLowerCase() === v.toLowerCase())) return toast('Esa materia ya existe', 'err');
+    mats.push(v); gm();
+  };
   enlazarNuevoCurso(c);
   let fests = ((d.calendario || {}).festivos || []).map(x => Object.assign({}, x));
   const pintaFests = () => {
@@ -227,14 +232,17 @@ function ajEstructura(c) {
     const inn = abrirHoja(cabHoja(t.id ? 'Editar tramo' : 'Nuevo tramo') + '<div class="grid2"><div><label class="lbl">Empieza</label><input class="input" type="time" id="ti" value="' + esc(t.hora_inicio || '') + '"></div><div><label class="lbl">Termina</label><input class="input" type="time" id="tf" value="' + esc(t.hora_fin || '') + '"></div><div><label class="lbl">Etiqueta</label><input class="input" id="te" value="' + esc(t.etiqueta || '') + '" placeholder="1ª sesión"></div><div><label class="lbl">Orden</label><input class="input" type="number" id="to" value="' + esc(t.orden || S.d.tramos.length + 1) + '"></div></div>' +
       '<label class="switch"><span><b style="font-weight:600">Es recreo</b></span><input type="checkbox" id="tr"' + (String(t.es_recreo) === 'true' ? ' checked' : '') + '></label>' +
       '<div class="sheet-foot">' + (t.id ? '<button class="btn danger" id="tDel" style="margin-right:auto">Eliminar</button>' : '') + '<button class="btn primary" id="tOk">Guardar</button></div>');
-    $('#tOk', inn).onclick = () => { cerrarHoja(); hacer('guardarTramo', [{ id: t.id || nuevoIdLocal(), hora_inicio: $('#ti').value, hora_fin: $('#tf').value, etiqueta: $('#te').value, orden: $('#to').value, es_recreo: $('#tr').checked ? 'true' : 'false' }], 'Tramo guardado'); };
-    const del = $('#tDel', inn); if (del) del.onclick = () => { cerrarHoja(); hacer('borrarTramo', [t.id], 'Tramo eliminado'); };
+    $('#tOk', inn).onclick = () => { if (!$('#ti').value) return toast('Indica la hora de inicio', 'err'); cerrarHoja(); hacer('guardarTramo', [{ id: t.id || nuevoIdLocal(), hora_inicio: $('#ti').value, hora_fin: $('#tf').value, etiqueta: $('#te').value, orden: $('#to').value, es_recreo: $('#tr').checked ? 'true' : 'false' }], 'Tramo guardado'); };
+    const del = $('#tDel', inn); if (del) del.onclick = () => {
+      if (S.d.horarios.some(h => h.tramo_id === t.id) || S.d.registros.some(r => r.tramo_id === t.id)) return toast('El tramo se usa en horarios o registros: no se puede borrar.', 'err');
+      cerrarHoja(); hacer('borrarTramo', [t.id], 'Tramo eliminado');
+    };
   };
   const grupo = g => {
     const inn = abrirHoja(cabHoja(g.id ? 'Editar grupo' : 'Nuevo grupo') + '<div class="grid2"><div><label class="lbl">Nombre corto</label><input class="input" id="gc" value="' + esc(g.nombre_corto || '') + '" placeholder="3ºA" autofocus></div><div><label class="lbl">Nombre largo</label><input class="input" id="gl" value="' + esc(g.nombre_largo || '') + '" placeholder="3º de Primaria A"></div><div><label class="lbl">Orden</label><input class="input" type="number" id="go" value="' + esc(g.orden || S.d.grupos.length + 1) + '"></div></div>' +
       '<div class="sheet-foot">' + (g.id ? '<button class="btn danger" id="gDel" style="margin-right:auto">Eliminar</button>' : '') + '<button class="btn primary" id="gOk">Guardar</button></div>');
     $('#gOk', inn).onclick = () => { if (!$('#gc').value.trim()) return toast('Escribe el nombre corto', 'err'); cerrarHoja(); hacer('guardarGrupo', [{ id: g.id || nuevoIdLocal(), nombre_corto: $('#gc').value.trim(), nombre_largo: $('#gl').value.trim(), orden: $('#go').value }], 'Grupo guardado'); };
-    const del = $('#gDel', inn); if (del) del.onclick = () => { if (S.d.alumnado.some(a => a.grupo_id === g.id)) return toast('El grupo tiene alumnado: muévelo antes a otro grupo.', 'err'); cerrarHoja(); hacer('borrarGrupo', [g.id], 'Grupo eliminado'); };
+    const del = $('#gDel', inn); if (del) del.onclick = () => { if (S.d.alumnado.some(a => a.grupo_id === g.id)) return toast('El grupo tiene alumnado: muévelo antes a otro grupo.', 'err'); const usa = x => (',' + x + ',').indexOf(',' + g.id + ',') >= 0; if (S.d.horarios.some(h => usa(h.grupo_ids)) || S.d.registros.some(r => usa(r.grupo_id))) return toast('El grupo se usa en horarios o registros: no se puede borrar.', 'err'); cerrarHoja(); hacer('borrarGrupo', [g.id], 'Grupo eliminado'); };
   };
   $('#tNew').onclick = () => tramo({});
   $('#gNew').onclick = () => grupo({});

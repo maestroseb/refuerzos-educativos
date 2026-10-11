@@ -8,6 +8,9 @@ let cacheSS_ = null;
 const cacheFilas_ = {};
 // Curso que se consulta en esta petición (solo lectura); null = el activo.
 let cursoSel_ = null;
+// Dentro de lote(): el candado ya está tomado para todo el lote.
+let enLote_ = false;
+let cursosMemo_ = null;
 
 /* ---------- Cursos académicos: una hoja por curso ----------
    Las propiedades del script guardan, por proyecto (las copias del script
@@ -15,6 +18,7 @@ let cursoSel_ = null;
    y cuál es el activo. */
 const sid_ = function() { return ScriptApp.getScriptId(); };
 function cursos_() {
+  if (cursosMemo_) return cursosMemo_;
   const props = PropertiesService.getScriptProperties();
   let lista = JSON.parse(props.getProperty('CURSOS_' + sid_()) || '[]');
   if (!lista.length) {
@@ -34,7 +38,7 @@ function cursos_() {
     props.deleteProperty(PROP_BD_ID + '_' + sid_());
     } finally { lock.releaseLock(); }
   }
-  return lista;
+  return (cursosMemo_ = lista);
 }
 function cursoActivo_() {
   const lista = cursos_();
@@ -70,13 +74,18 @@ function bd_() {
   // crea otra, que dejaría huérfanos los datos reales.
   const ss = SpreadsheetApp.openById(c.id);
   // El esquema solo se revisa cuando cambia (evita ~20 lecturas por petición).
-  const firma = JSON.stringify(ESQUEMA).length;
+  const firma = firmaEsquema_();
   if (props.getProperty('ESQUEMA_OK_' + c.id) !== String(firma)) {
     asegurarEsquema_(ss);
     props.setProperty('ESQUEMA_OK_' + c.id, String(firma));
   }
   cacheSS_ = ss;
   return ss;
+}
+
+/** Huella del esquema (cambia con cualquier cambio de columnas). */
+function firmaEsquema_() {
+  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(ESQUEMA)));
 }
 
 function asegurarEsquema_(ss) {
@@ -143,7 +152,12 @@ function guardar_(nombre, obj) {
   const fila = cab.map(function(c) { return base[c] == null ? '' : String(base[c]); });
   if (previa) h.getRange(previa._fila, 1, 1, cab.length).setValues([fila]);
   else h.appendRow(fila);
-  delete cacheFilas_[nombre];
+  // Se actualiza la caché en vez de releer la hoja entera (lotes rápidos).
+  const cache = cacheFilas_[nombre];
+  if (cache) {
+    const o = Object.assign({}, base, { _fila: previa ? previa._fila : h.getLastRow() });
+    if (previa) cache[cache.indexOf(previa)] = o; else cache.push(o);
+  }
   return base;
 }
 
@@ -164,9 +178,22 @@ function reemplazar_(nombre, nuevas, quitar) {
   const todas = quedan.concat(nuevas).map(function(o) {
     return cab.map(function(c) { return o[c] == null ? '' : String(o[c]); });
   });
-  if (h.getLastRow() > 1) h.getRange(2, 1, h.getLastRow() - 1, h.getLastColumn()).clearContent();
+  // Primero se escribe lo nuevo y después se limpia lo que sobra: si algo
+  // falla a medias, nunca queda la pestaña vacía.
+  const antes = h.getLastRow();
   if (todas.length + 1 > h.getMaxRows()) h.insertRowsAfter(h.getMaxRows(), todas.length + 1 - h.getMaxRows());
   if (todas.length) h.getRange(2, 1, todas.length, cab.length).setValues(todas);
+  if (antes > todas.length + 1) h.getRange(todas.length + 2, 1, antes - todas.length - 1, h.getLastColumn()).clearContent();
+  delete cacheFilas_[nombre];
+}
+
+/** Añade filas al final, sin reescribir la pestaña. */
+function anexar_(nombre, nuevas) {
+  if (!nuevas.length) return;
+  const h = hoja_(nombre), cab = cabecera_(h);
+  h.getRange(h.getLastRow() + 1, 1, nuevas.length, cab.length).setValues(nuevas.map(function(o) {
+    return cab.map(function(c) { return o[c] == null ? '' : String(o[c]); });
+  }));
   delete cacheFilas_[nombre];
 }
 
@@ -199,8 +226,10 @@ function setConfig_(clave, valor) {
 }
 
 function conCandado_(fn) {
+  if (enLote_) return fn();
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  // Error marcado para que el cliente sepa que es pasajero y reintente.
+  if (!lock.tryLock(20000)) { const e = new Error('Servidor ocupado, se reintentará.'); e.name = 'OCUPADO'; throw e; }
   // Lo leído antes del candado puede estar desfasado (y con nº de fila viejo).
   Object.keys(cacheFilas_).forEach(function(k) { delete cacheFilas_[k]; });
   yoMemo_ = null;

@@ -36,7 +36,7 @@ function estadoDia(docId, fecha) {
   if (!fr.length) return '';
   return fr.every(f => registrosDe(docId, fecha, f.tramo_id).length) ? 'ok' : 'pend';
 }
-const registrosDe = (docId, fecha, tramo) => S.d.registros.filter(r => r.docente_id === docId && r.fecha === fecha && (!tramo || r.tramo_id === tramo));
+const registrosDe = (docId, fecha, tramo) => ((S.idx.reg && S.idx.reg[docId + '|' + fecha]) || []).filter(r => !tramo || r.tramo_id === tramo);
 
 function fechaPorDefecto() {
   let h = hoyIso();
@@ -67,7 +67,7 @@ function tramoPorDefecto(fecha) {
 }
 function grupoPorDefecto(fecha, tramo) {
   const f = franjasDe(S.actor, fecha).find(x => x.tramo_id === tramo);
-  if (f) return gruposDeFranja(f).join(',');
+  if (f) return gruposDeFranja(f).sort().join(',');
   const prev = S.d.registros.find(r => r.docente_id === S.actor && r.tramo_id === tramo && diaDe(r.fecha) === diaDe(fecha));
   return prev ? prev.grupo_id : '';
 }
@@ -76,7 +76,7 @@ function nuevoForm(fecha, tramo) {
   tramo = tramo != null ? tramo : tramoPorDefecto(fecha);
   const f = { id: '', fecha, tramo_id: tramo, grupo_id: grupoPorDefecto(fecha, tramo), alumnos: [], extra: [], materia: '', trabajado: '', estrellas: 0, cambiarGrupo: false, estado: 'realizada', motivo: '' };
   // Mismo alumnado y materia que la última sesión de esta franja (se puede cambiar).
-  const prev = S.d.registros.find(r => !noHecha(r) && r.docente_id === S.actor && r.tramo_id === tramo && diaDe(r.fecha) === diaDe(fecha) && r.grupo_id === f.grupo_id && r.fecha < fecha);
+  const prev = S.d.registros.find(r => !noHecha(r) && r.docente_id === S.actor && r.tramo_id === tramo && diaDe(r.fecha) === diaDe(fecha) && gruposSel(r).sort().join() === gruposSel(f).sort().join() && r.fecha < fecha);
   if (prev) { f.sugeridos = aluIds(prev).filter(i => S.idx.alu[i] && S.idx.alu[i].activo); f.materia = prev.materia; }
   const b = LS.get('borrador', null);
   // El borrador no borra el grupo del horario si se guardó sin grupo.
@@ -257,7 +257,7 @@ function pintarSesion() {
   const fr = franjas.find(x => x.tramo_id === f.tramo_id);
   const sel = gruposSel(f).filter(id => S.idx.grupo[id]).sort((a, b) => ordenGrupo(a) - ordenGrupo(b)), t = S.idx.tramo[f.tramo_id];
   const g = S.idx.grupo[sel[0]], conjunto = sel.length > 1;
-  const badge = !g ? '?' : g.nombre_corto.replace(/\s+/g, '').slice(0, 4) + (conjunto ? '<sup>+' + (sel.length - 1) + '</sup>' : '');
+  const badge = !g ? '?' : esc(g.nombre_corto.replace(/\s+/g, '').slice(0, 4)) + (conjunto ? '<sup>+' + (sel.length - 1) + '</sup>' : '');
   const lista = arr => arr.length > 1 ? arr.slice(0, -1).join(', ') + ' y ' + arr[arr.length - 1] : arr.join('');
   const fd = franjaDestacada();
   const repite = !f.cambiarGrupo && !!g && f.fecha === hoyIso() && fd && fd.tramo_id === f.tramo_id &&
@@ -306,7 +306,7 @@ function pintarSesion() {
   c.querySelectorAll('[data-grupo]').forEach(b => b.onclick = () => {
     const s = gruposSel(S.f), id = b.dataset.grupo, i = s.indexOf(id);
     if (i >= 0) s.splice(i, 1); else s.push(id);
-    S.f.grupo_id = s.join(',');
+    S.f.grupo_id = s.sort().join(',');
     S.f.extra = S.f.alumnos.filter(x => S.idx.alu[x] && !enGrupos(S.f, S.idx.alu[x]));
     pintarSesion(); pintarHist(); pintarSavebar(); guardarBorrador();
   });
@@ -510,7 +510,7 @@ function pintarSavebar() {
   if (!sb) return;
   if (diaCerrado()) { sb.hidden = true; return; }
   const no = f.estado === 'no_realizada';
-  const falta = no ? (!f.motivo ? 'Indica el motivo' : '') : !f.alumnos.length ? 'Selecciona alumnado' : !f.materia ? 'Elige la materia' : !f.estrellas ? 'Valora el aprovechamiento' : '';
+  const falta = no ? (!f.motivo ? 'Indica el motivo' : '') : !gruposSel(f).length ? 'Elige el grupo' : !f.alumnos.length ? 'Selecciona alumnado' : !f.materia ? 'Elige la materia' : !f.estrellas ? 'Valora el aprovechamiento' : '';
   // La barra solo aparece cuando ya hay algo escrito (o, si no se realizó, con el motivo elegido).
   const visible = !!f.id || (no ? !!f.motivo : !!String(f.trabajado || '').trim());
   if (!visible) { sb.hidden = true; return; }
