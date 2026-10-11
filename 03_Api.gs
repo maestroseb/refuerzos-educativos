@@ -48,7 +48,7 @@ function inicio(curso) {
  * da refuerzo según su horario.
  */
 function registroVisible_(yo) {
-  if (yo.admin || yo.elegible) return function() { return true; };
+  if (yo.admin) return function() { return true; };
   const grupos = {};
   filas_(HOJAS.HORARIOS).forEach(function(h) {
     if (h.docente_id === yo.docenteId) String(h.grupo_ids).split(',').forEach(function(g) { if (g) grupos[g] = 1; });

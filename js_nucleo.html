@@ -254,12 +254,12 @@ function aplicarTema() {
 aplicarTema();
 function menuUsuario() {
   const yo = S.d.yo, d = S.idx.doc[S.actor], tema = LS.get('tema', 'auto');
-  const puedeElegir = yo.admin || yo.elegible;
+  const puedeElegir = yo.admin;
   const opts = S.d.docentes.filter(x => x.activo).map(x => '<option value="' + esc(x.id) + '"' + (x.id === S.actor ? ' selected' : '') + '>' + esc(x.nombre_completo || x.nombre_corto) + '</option>').join('');
   const inn = abrirHoja(cabHoja(esc(d ? (d.sustituto && yo.comoSustituto ? d.sustituto : (d.nombre_completo || d.nombre_corto)) : 'Sin identificar'), esc(yo.email || 'Cuenta sin email visible') + (yo.admin ? ' · Administración' : '')) +
     '<div class="stack">' +
-    (puedeElegir ? '<div><label class="lbl" for="actorSel">' + (yo.admin ? 'Registrar en nombre de' : '¿Quién eres?') + '</label><select class="select" id="actorSel"><option value="">—</option>' + opts + '</select>' +
-      (yo.elegible && !yo.admin ? '<p class="muted" style="font-size:13px;margin:6px 0 0">Tu email no está en la lista de docentes. Pide a la administración que lo añada para entrar directamente.</p>' : '') + '</div>' : '') +
+    (puedeElegir ? '<div><label class="lbl" for="actorSel">' + 'Registrar en nombre de' + '</label><select class="select" id="actorSel"><option value="">—</option>' + opts + '</select>' +
+      '</div>' : '') +
     '<div><span class="lbl">Apariencia</span><div class="seg" id="temaSeg">' + [['auto', 'Automática'], ['light', 'Clara'], ['dark', 'Oscura']].map(([k, v]) => '<button aria-pressed="' + (tema === k) + '" data-t="' + k + '">' + v + '</button>').join('') + '</div></div>' +
     '</div>');
   const sel = inn.querySelector('#actorSel');
@@ -502,7 +502,7 @@ function cargarDatos(d) {
   const previo = S.d;
   reaplicarCola(d);
   indexar();
-  S.actor = d.yo.docenteId || ((d.yo.elegible || d.yo.admin) ? LS.get('actor', '') : '');
+  S.actor = d.yo.docenteId || (d.yo.admin ? LS.get('actor', '') : '');
   if (S.actor && !S.idx.doc[S.actor]) S.actor = d.yo.docenteId || '';
   pintarYo();
   $('[data-view="ajustes"]').hidden = !d.yo.admin;
@@ -539,7 +539,6 @@ function arrancar() {
     LS.set('datos', d);
     cargarDatos(d);
     setTimeout(procesarCola, 300);
-    if (!S.actor && d.docentes.length && d.yo.elegible && !d.yo.admin) setTimeout(menuUsuario, 400);
     api('sustituciones').then(llegaSust).catch(() => {});
   }).catch(e => {
     if (S.d) { toast('Sin conexión: ves la última copia guardada', 'err'); return; }

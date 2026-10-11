@@ -22,16 +22,14 @@ function yo_() {
     email: email,
     docenteId: docente ? docente.id : '',
     comoSustituto: comoSustituto,
-    admin: admin,
-    // Sin email resoluble (cuenta ajena al dominio): se deja elegir docente.
-    elegible: !docente && !email
+    admin: admin
   });
 }
 
 /** Docente en cuyo nombre se actúa: el propio, o el elegido si se permite. */
 function actorId_(pedido) {
   const yo = yo_();
-  if (pedido && (yo.admin || yo.elegible)) return { yo: yo, id: pedido };
+  if (pedido && yo.admin) return { yo: yo, id: pedido };
   if (!yo.docenteId) throw new Error('No te encuentro entre el profesorado. Pide a la administración que añada tu email.');
   return { yo: yo, id: yo.docenteId };
 }
@@ -39,7 +37,8 @@ function actorId_(pedido) {
 /** Exige ser docente registrado, administración o cuenta sin email. */
 function exigirAcceso_() {
   const yo = yo_();
-  if (!yo.docenteId && !yo.admin && !yo.elegible) throw new Error('Tu cuenta (' + yo.email + ') no está entre el profesorado. Pide a la administración que te añada.');
+  // Sin email visible no se entra nunca: solo docentes dados de alta y administración.
+  if (!yo.email || (!yo.docenteId && !yo.admin)) throw new Error('Tu cuenta (' + yo.email + ') no está entre el profesorado. Pide a la administración que te añada.');
   return yo;
 }
 
