@@ -30,6 +30,7 @@ function ajGeneral(c) {
     '<div><span class="lbl">Materias de refuerzo</span><div class="pills" id="mats">' + d.materias.map(m => '<span class="pill sm mat ' + claseMateria(m) + '" aria-pressed="true">' + esc(m) + '<button data-quita="' + esc(m) + '" aria-label="Quitar ' + esc(m) + '" style="margin-left:2px;opacity:.6">✕</button></span>').join('') +
     '<input class="input sm" id="nuevaMat" placeholder="Añadir…" style="width:130px;border-radius:999px"></div></div>' +
     '<div><button class="btn primary" id="gCentro">Guardar</button></div></section>' +
+    seccionCurso(d) +
     '<section class="card stack"><h2 class="h2">Calendario de refuerzos</h2><p class="muted" style="margin:4px 0 0">Marca en qué periodo se anotan refuerzos y qué días no hay clase. Esos días no cuentan como pendientes en el calendario de cada docente.' + (d.semanas.length ? ' Las semanas fuera del calendario A/B de la hoja madre tampoco cuentan.' : '') + '</p>' +
     '<div class="grid2"><div><label class="lbl" for="calIni">Empiezan</label><input class="input" type="date" id="calIni" value="' + esc((d.calendario || {}).inicio || '') + '"></div><div><label class="lbl" for="calFin">Terminan</label><input class="input" type="date" id="calFin" value="' + esc((d.calendario || {}).fin || '') + '"></div></div>' +
     '<div><span class="lbl">Festivos y días sin clase</span><div class="pills" id="fests"></div>' +
@@ -41,6 +42,7 @@ function ajGeneral(c) {
   const gm = () => hacer('guardarAjustes', [{ materias: mats.slice() }], 'Materias guardadas');
   c.querySelectorAll('[data-quita]').forEach(b => b.onclick = () => { if (mats.length < 2) return; mats = mats.filter(m => m !== b.dataset.quita); gm(); });
   $('#nuevaMat').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) { mats.push(e.target.value.trim()); gm(); } };
+  enlazarNuevoCurso(c);
   let fests = ((d.calendario || {}).festivos || []).map(x => Object.assign({}, x));
   const pintaFests = () => {
     fests.sort((a, b) => a.desde.localeCompare(b.desde));
@@ -65,6 +67,29 @@ function ajGeneral(c) {
       .catch(e => { fallo(e); b.disabled = false; b.innerHTML = IC.sync + 'Sincronizar ahora'; });
   };
   $('#diaria').onchange = e => hacer('activarSincroDiaria', [e.target.checked], e.target.checked ? 'Sincronización nocturna activada' : 'Sincronización nocturna desactivada');
+}
+
+/* ---------- Curso académico ---------- */
+const sigCurso = c => { const a = +String(c).slice(0, 4) + 1; return a + '-' + String(a + 1).slice(-2); };
+function seccionCurso(d) {
+  const fin = (d.calendario || {}).fin, acabado = fin && hoyIso() > fin, sig = sigCurso(d.curso);
+  return '<section class="card stack"><h2 class="h2">Curso académico</h2>' +
+    '<p class="muted" style="margin:4px 0 0">Curso activo: <b style="color:var(--ink)">' + esc(d.curso) + '</b>. Cada curso se guarda en su propia hoja; los anteriores se consultan desde Diario y Datos.' + ((d.cursos || []).length > 1 ? ' Cursos: ' + esc(d.cursos.join(', ')) + '.' : '') + '</p>' +
+    (acabado ? '<div class="banner warn">' + IC.info + '<span class="grow">El curso ' + esc(d.curso) + ' terminó el ' + esc(fechaCorta(fin)) + '. Cuando quieras, inicia el ' + esc(sig) + '.</span></div>' : '') +
+    '<label class="switch"><span><b style="font-weight:600">Copiar el alumnado</b><br><small class="muted">Para revisarlo después (cambios de grupo, altas y bajas)</small></span><input type="checkbox" id="ncAlu" checked></label>' +
+    '<div><button class="btn' + (acabado ? ' primary' : '') + '" id="ncOk">Iniciar el curso ' + esc(sig) + '</button></div>' +
+    '<p class="muted" style="font-size:12.5px;margin:0">Se copian la configuración, los tramos, los grupos y el profesorado. Empiezan vacíos los registros, los horarios (vuelve a sincronizar la hoja madre), el periodo y los festivos.</p></section>';
+}
+function enlazarNuevoCurso(c) {
+  const b = $('#ncOk', c);
+  if (!b) return;
+  b.onclick = async () => {
+    const sig = sigCurso(S.d.curso);
+    if (!(await confirmar('Se creará la hoja del curso ' + sig + ' y pasará a ser el curso activo. El curso ' + S.d.curso + ' se conserva y podrá consultarse.', 'Iniciar ' + sig))) return;
+    b.disabled = true; b.textContent = 'Creando el curso…';
+    api('nuevoCurso', { copiarAlumnado: $('#ncAlu', c).checked }).then(n => recargar('Curso ' + n + ' iniciado. Revisa horarios, periodo y festivos.'))
+      .catch(e => { fallo(e); b.disabled = false; b.textContent = 'Iniciar el curso ' + sig; });
+  };
 }
 
 /* ---------- Profesorado ---------- */

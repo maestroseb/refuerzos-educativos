@@ -5,13 +5,17 @@
  * calcular estadísticas en el navegador al instante.
  */
 
-function inicio() {
+function inicio(curso) {
   const yo = exigirAcceso_();
+  const activo = cursoActivo_().curso, lista = cursos_().map(function(x) { return x.curso; });
+  // Cursos anteriores: solo lectura; la administración ve todo y cada docente, lo suyo.
+  const antiguo = curso ? usarCurso_(curso) : false;
   const c = config_();
-  const visible = registroVisible_(yo);
+  const visible = antiguo ? (yo.admin ? function() { return true; } : function(r) { return r.docente_id === yo.docenteId; }) : registroVisible_(yo);
   const limpia = function(arr) { return arr.map(limpio_); };
   return {
-    yo: yo_(),
+    yo: yo,
+    curso: antiguo ? cursoSel_.curso : activo, cursoActivo: activo, cursos: lista, soloLectura: antiguo,
     centro: c.CENTRO || '',
     materias: (c.MATERIAS ? c.MATERIAS.split('|') : MATERIAS_DEF),
     motivos: MOTIVOS_DEF,
@@ -19,7 +23,7 @@ function inicio() {
     ultimaSincro: c.ULTIMA_SINCRO || '',
     sincroDiaria: sincroDiariaActiva_(),
     calendario: calendario_(c),
-    bdUrl: yo_().admin ? bd_().getUrl() : '',
+    bdUrl: yo.admin ? bd_().getUrl() : '',
     tramos: limpia(filas_(HOJAS.TRAMOS)),
     grupos: limpia(filas_(HOJAS.GRUPOS)),
     semanas: limpia(filas_(HOJAS.SEMANAS)),
@@ -89,6 +93,40 @@ function lote(ops) {
       if (/lock|bloqueo/i.test(String(e && e.message))) throw e;
       return { ok: false, error: (e && e.message) || String(e) };
     }
+  });
+}
+
+/**
+ * Empieza un curso nuevo: hoja nueva con la configuración, tramos, grupos y
+ * profesorado del actual (y el alumnado si se pide). Los registros, horarios,
+ * semanas, periodo y festivos empiezan vacíos. El curso anterior se conserva.
+ */
+function nuevoCurso(op) {
+  exigirAdmin_();
+  return conCandado_(function() {
+    const act = cursoActivo_(), lista = cursos_();
+    const nuevo = siguienteCurso_(act.curso);
+    if (lista.some(function(x) { return x.curso === nuevo; })) throw new Error('El curso ' + nuevo + ' ya existe.');
+    const ss = SpreadsheetApp.create(NOMBRE_BD + ' · ' + nuevo);
+    asegurarEsquema_(ss);
+    const copia = function(nombre, filas) {
+      const h = ss.getSheetByName(nombre), cab = ESQUEMA[nombre];
+      if (!filas.length) return;
+      h.getRange(2, 1, filas.length, cab.length).setValues(filas.map(function(o) { return cab.map(function(k) { return o[k] == null ? '' : String(o[k]); }); }));
+    };
+    const fuera = /^(REF_INICIO|REF_FIN|FESTIVOS|ULTIMA_SINCRO|HORARIO_MANUAL_.*)$/;
+    copia(HOJAS.CONFIG, filas_(HOJAS.CONFIG).filter(function(f) { return !fuera.test(f.clave); }));
+    copia(HOJAS.TRAMOS, filas_(HOJAS.TRAMOS));
+    copia(HOJAS.GRUPOS, filas_(HOJAS.GRUPOS));
+    copia(HOJAS.DOCENTES, filas_(HOJAS.DOCENTES));
+    if (op && op.copiarAlumnado) copia(HOJAS.ALUMNADO, filas_(HOJAS.ALUMNADO).filter(function(a) { return a.activo !== 'false'; }));
+    const props = PropertiesService.getScriptProperties();
+    lista.push({ curso: nuevo, id: ss.getId() });
+    props.setProperty('CURSOS_' + sid_(), JSON.stringify(lista));
+    props.setProperty('CURSO_' + sid_(), nuevo);
+    props.setProperty('ESQUEMA_OK_' + ss.getId(), String(JSON.stringify(ESQUEMA).length));
+    cacheSS_ = null;
+    return nuevo;
   });
 }
 
