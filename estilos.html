@@ -698,6 +698,8 @@ button.ahora:active { transform: scale(.985); }
 .cal { margin-bottom: 18px; padding: 16px 18px; }
 .cal-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .cal-h .arrow { height: 34px; }
+.cal-h .grow { flex: 1; min-width: 0; }
+a.btn { text-decoration: none; }
 .cal-h .arrow[disabled] { opacity: .3; }
 .cal-h b { display: block; font: 600 18px/1.2 var(--f-display); letter-spacing: -.01em; }
 .cal-h small { color: var(--muted); font-size: 13px; }
@@ -740,4 +742,18 @@ button.ahora:active { transform: scale(.985); }
 .pks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .pk b { display: block; font: 600 22px/1.1 var(--f-display); }
 .pk small { color: var(--muted); font-size: 12px; }
+
+/* Cumplimiento por docente */
+.cump { margin-bottom: 18px; padding: 16px 18px; }
+.cump-t { display: flex; flex-direction: column; }
+.cump-r { display: grid; grid-template-columns: minmax(0, 1.6fr) 80px minmax(0, 1fr) 90px; gap: 12px; align-items: center; padding: 8px 6px; border-radius: 10px; text-align: left; font-size: 14px; }
+button.cump-r:hover { background: var(--surface-2); }
+.cump-hd { font: 600 11px var(--f-mono); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding-top: 0; }
+.cump-n { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.cump-nt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cump-n .ini { width: 30px; height: 30px; font-size: 11px; flex: none; }
+.cump-bar { position: relative; height: 8px; border-radius: 99px; background: var(--surface-2); margin-right: 40px; }
+.cump-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 99px; }
+.cump-bar em { position: absolute; right: -40px; top: 50%; transform: translateY(-50%); font-style: normal; font-size: 12.5px; color: var(--ink-2); }
+@media (max-width: 640px) { .cump-r { grid-template-columns: minmax(0, 1fr) 70px 60px; } .cump-r > :nth-child(3) { display: none; } }
 </style>
