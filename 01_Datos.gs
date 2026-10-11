@@ -6,34 +6,74 @@
 
 let cacheSS_ = null;
 const cacheFilas_ = {};
+// Curso que se consulta en esta petición (solo lectura); null = el activo.
+let cursoSel_ = null;
+
+/* ---------- Cursos académicos: una hoja por curso ----------
+   Las propiedades del script guardan, por proyecto (las copias del script
+   para otros centros no heredan las hojas), la lista de cursos con su hoja
+   y cuál es el activo. */
+const sid_ = function() { return ScriptApp.getScriptId(); };
+function cursos_() {
+  const props = PropertiesService.getScriptProperties();
+  let lista = JSON.parse(props.getProperty('CURSOS_' + sid_()) || '[]');
+  if (!lista.length) {
+    // Primera vez (o instalación anterior): con candado para no crear dos hojas.
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      lista = JSON.parse(props.getProperty('CURSOS_' + sid_()) || '[]');
+      if (lista.length) return lista;
+    // Migración: la hoja que ya existía pasa a ser la del curso en vigor.
+    let id = props.getProperty(PROP_BD_ID + '_' + sid_()) || props.getProperty(PROP_BD_ID);
+    if (!id) { id = SpreadsheetApp.create(NOMBRE_BD + ' · ' + cursoDeFecha_(new Date())).getId(); }
+    lista = [{ curso: cursoDeFecha_(new Date()), id: id }];
+    props.setProperty('CURSOS_' + sid_(), JSON.stringify(lista));
+    props.setProperty('CURSO_' + sid_(), lista[0].curso);
+    props.deleteProperty(PROP_BD_ID);
+    props.deleteProperty(PROP_BD_ID + '_' + sid_());
+    } finally { lock.releaseLock(); }
+  }
+  return lista;
+}
+function cursoActivo_() {
+  const lista = cursos_();
+  const act = PropertiesService.getScriptProperties().getProperty('CURSO_' + sid_());
+  return lista.filter(function(c) { return c.curso === act; })[0] || lista[lista.length - 1];
+}
+/** «2026-27» para fechas desde septiembre; «2025-26» antes. */
+function cursoDeFecha_(d) {
+  const y = d.getFullYear(), m = d.getMonth();
+  const a = m >= 8 ? y : y - 1;
+  return a + '-' + String(a + 1).slice(-2);
+}
+function siguienteCurso_(c) {
+  const a = Number(String(c).slice(0, 4)) + 1;
+  return a + '-' + String(a + 1).slice(-2);
+}
+/** Pasa a consultar otro curso (solo lectura) en esta petición. */
+function usarCurso_(curso) {
+  const c = cursos_().filter(function(x) { return x.curso === curso; })[0];
+  if (!c) throw new Error('Ese curso no existe.');
+  if (c.curso === cursoActivo_().curso) return false;
+  cursoSel_ = c;
+  cacheSS_ = null;
+  Object.keys(cacheFilas_).forEach(function(k) { delete cacheFilas_[k]; });
+  return true;
+}
 
 function bd_() {
   if (cacheSS_) return cacheSS_;
   const props = PropertiesService.getScriptProperties();
-  // La BD se guarda por proyecto: si alguien hace una copia del script para
-  // otro centro (las propiedades se copian), la copia crea su propia BD.
-  const clave = PROP_BD_ID + '_' + ScriptApp.getScriptId();
-  let id = props.getProperty(clave);
-  if (!id && props.getProperty(PROP_BD_ID)) {
-    // Migración de instalaciones anteriores: se adopta una sola vez y se borra
-    // la clave antigua para que las copias posteriores no la hereden.
-    id = props.getProperty(PROP_BD_ID);
-    props.setProperty(clave, id);
-    props.deleteProperty(PROP_BD_ID);
-  }
-  let ss;
-  // Si ya hay BD y falla al abrir (error transitorio), se lanza el error:
-  // nunca se crea otra, que dejaría huérfanos los datos reales.
-  if (id) ss = SpreadsheetApp.openById(id);
-  else {
-    ss = SpreadsheetApp.create(NOMBRE_BD);
-    props.setProperty(clave, ss.getId());
-  }
+  const c = cursoSel_ || cursoActivo_();
+  // Si la hoja falla al abrir (error transitorio) se lanza el error: nunca se
+  // crea otra, que dejaría huérfanos los datos reales.
+  const ss = SpreadsheetApp.openById(c.id);
   // El esquema solo se revisa cuando cambia (evita ~20 lecturas por petición).
-  const firma = ss.getId() + '|' + JSON.stringify(ESQUEMA).length;
-  if (props.getProperty('ESQUEMA_OK') !== firma) {
+  const firma = JSON.stringify(ESQUEMA).length;
+  if (props.getProperty('ESQUEMA_OK_' + c.id) !== String(firma)) {
     asegurarEsquema_(ss);
-    props.setProperty('ESQUEMA_OK', firma);
+    props.setProperty('ESQUEMA_OK_' + c.id, String(firma));
   }
   cacheSS_ = ss;
   return ss;

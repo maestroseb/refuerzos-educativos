@@ -5,7 +5,8 @@
    Comparte filtros con el Diario.
    ===================================================================== */
 VISTAS.datos = function(el) {
-  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Datos y estadísticas</div><h1 class="h1">Cómo van los <em>refuerzos</em></h1></header><div id="cCump"></div><div id="fBar"></div><div id="dBody"></div>';
+  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Datos y estadísticas' + selectorCurso() + '</div><h1 class="h1">Cómo van los <em>refuerzos</em></h1></header>' + avisoCurso() + '<div id="cCump"></div><div id="fBar"></div><div id="dBody"></div>';
+  enlazarCurso(el);
   pintarCumplimiento();
   const pintaBarra = () => { const fb = $('#fBar'); fb.innerHTML = ''; fb.appendChild(barraFiltros(full => { if (full) pintaBarra(); pintarDatos(); }, false)); };
   pintaBarra();

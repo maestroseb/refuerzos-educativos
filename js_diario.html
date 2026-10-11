@@ -6,7 +6,8 @@
 let limiteDiario = 60;
 VISTAS.diario = function(el) {
   limiteDiario = 60;
-  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Diario de sesiones</div><h1 class="h1">Lo que hemos <em>trabajado</em></h1></header><div class="dlay"><aside class="dside"><div id="cMes"></div><div id="cPend"></div></aside><div class="dmain"><div id="fBar"></div><div id="dList"></div></div></div>';
+  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Diario de sesiones' + selectorCurso() + '</div><h1 class="h1">Lo que hemos <em>trabajado</em></h1></header>' + avisoCurso() + '<div class="dlay"><aside class="dside"><div id="cMes"></div><div id="cPend"></div></aside><div class="dmain"><div id="fBar"></div><div id="dList"></div></div></div>';
+  enlazarCurso(el);
   pintarMes();
   // Sin refuerzos propios (p. ej. administración) no hay columna lateral.
   if (!$('#cMes').innerHTML) el.querySelector('.dlay').classList.add('sin-lado');
@@ -21,7 +22,7 @@ let mesCal = '';
 function pintarMes() {
   const c = $('#cMes');
   if (!c) return;
-  if (!S.actor || !S.d.horarios.some(h => h.docente_id === S.actor)) { c.innerHTML = ''; return; }
+  if (S.d.soloLectura || !S.actor || !S.d.horarios.some(h => h.docente_id === S.actor)) { c.innerHTML = ''; return; }
   const hoy = hoyIso();
   if (!mesCal) mesCal = hoy.slice(0, 7);
   const [y, m] = mesCal.split('-').map(Number);
@@ -42,7 +43,7 @@ let verPend = false;
 function pintarPend() {
   const c = $('#cPend');
   if (!c) return;
-  if (!S.actor || !S.d.horarios.some(h => h.docente_id === S.actor)) { c.innerHTML = ''; return; }
+  if (S.d.soloLectura || !S.actor || !S.d.horarios.some(h => h.docente_id === S.actor)) { c.innerHTML = ''; return; }
   const hoy = hoyIso(), mes = mesCal || hoy.slice(0, 7), ahora = ahoraMin(), lista = [];
   const [y, m] = mes.split('-').map(Number), ult = iso(new Date(y, m, 0, 12));
   for (let f = mes + '-01'; f <= ult && f <= hoy; f = sumaDias(f, 1)) {

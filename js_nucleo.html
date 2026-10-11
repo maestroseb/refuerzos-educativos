@@ -137,11 +137,46 @@ const sustitucionEn = (docId, fecha, tramo) => (S.d.sustituciones || []).find(x 
 /* Día en que el docente faltó al centro (alguien le sustituyó, según la hoja madre). */
 const ausenciaEn = (docId, fecha) => (S.d.sustituciones || []).find(x => x.ausente_id === docId && x.fecha === fecha);
 const motivoAuto = f => f.sust ? 'Sustitución' : f.aus ? 'Ausencia del docente' : '';
-const puedoEditar = r => S.d.yo.admin || r.docente_id === S.actor;
+const puedoEditar = r => !S.d.soloLectura && (S.d.yo.admin || r.docente_id === S.actor);
+
+/* ---------- Cursos anteriores (solo lectura) ----------
+   S.dAct guarda los datos del curso activo mientras se consulta otro. */
+function selectorCurso() {
+  const cs = (S.dAct || S.d).cursos || [];
+  if (cs.length < 2) return '';
+  return ' · <select class="curso-sel" aria-label="Curso académico">' + cs.slice().reverse().map(c => '<option' + (c === S.d.curso ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>';
+}
+function avisoCurso() {
+  return S.d.soloLectura ? '<div class="banner" style="margin:-6px 0 18px">' + IC.info + '<span class="grow">Consultando el curso <b>' + esc(S.d.curso) + '</b> · solo lectura</span><button class="btn sm" data-volver>Volver al curso actual</button></div>' : '';
+}
+function enlazarCurso(el) {
+  const s = el.querySelector('.curso-sel'); if (s) s.onchange = () => cambiarCurso(s.value);
+  const v = el.querySelector('[data-volver]'); if (v) v.onclick = () => { volverActivo(); ir(S.view); };
+}
+function volverActivo() {
+  if (!S.dAct) return;
+  S.d = S.dAct; S.dAct = null; indexar(); mesCal = ''; mesCump = '';
+  procesarCola();
+}
+function cambiarCurso(c) {
+  const act = S.dAct || S.d;
+  if (c === act.cursoActivo) { volverActivo(); return ir(S.view); }
+  toast('Cargando el curso ' + c + '…');
+  api('inicio', c).then(d => {
+    d.sustituciones = [];
+    if (!S.dAct) S.dAct = S.d;
+    S.d = d; indexar();
+    const a = +c.slice(0, 4), fin = (d.calendario && d.calendario.fin) || ((a + 1) + '-06-30');
+    mesCal = mesCump = fin.slice(0, 7);
+    ir(S.view);
+  }).catch(fallo);
+}
 
 /* ---------- Navegación ---------- */
 function ir(v, opts) {
   if (v === 'ajustes' && !S.d) return;
+  // Registrar y Ajustes trabajan siempre sobre el curso activo.
+  if (S.d && S.d.soloLectura && (v === 'registrar' || v === 'ajustes')) volverActivo();
   S.view = v;
   $$('#nav .nav-i').forEach(b => { if (b.dataset.view === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   const m = $('#main');
@@ -258,6 +293,8 @@ function pintarYo() {
 /* ---------- Filtros compartidos (Diario y Datos) ---------- */
 const F = LS.get('filtros', { quien: 'todos', rango: 'curso', grupo: '', alumno: '', docente: '', materia: '', q: '', desde: '', hasta: '' });
 function rangoFechas() {
+  // Curso anterior (solo lectura): siempre el curso entero o el periodo a medida.
+  if (S.d.soloLectura && F.rango !== 'custom') { const a = +S.d.curso.slice(0, 4); return [a + '-09-01', (a + 1) + '-08-31']; }
   const h = hoyIso();
   const y = deIso(h).getFullYear(), m = deIso(h).getMonth();
   const inicioCurso = (m >= 8 ? y : y - 1) + '-09-01';
@@ -393,7 +430,7 @@ function reaplicarCola(d) {
 }
 /* Envía de una vez lo pendiente (hasta 25 cambios) en una sola llamada. */
 function procesarCola() {
-  if (COLA.activa || COLA.espera || !COLA.items.length) return pintarCola();
+  if (COLA.activa || COLA.espera || !COLA.items.length || S.dAct) return pintarCola();
   COLA.activa = true; pintarCola();
   const lote = COLA.items.slice(0, 25);
   api('lote', lote.map(it => ({ fn: it.fn || 'guardarRegistro', args: it.fn ? it.args : [it.p] }))).then(res => {
@@ -457,6 +494,10 @@ window.addEventListener('beforeunload', e => { if (COLA.items.length) { e.preven
    actualiza en cuanto responde el servidor. Las sustituciones (hoja madre)
    llegan aparte para no frenar la carga. */
 function cargarDatos(d) {
+  if (S.dAct) {
+    // Llegan datos del curso activo mientras se consulta otro: se guardan aparte.
+    const viendo = S.d; d.sustituciones = S.dAct.sustituciones || []; reaplicarCola(d); S.dAct = d; S.d = viendo; indexar(); return;
+  }
   if (!d.sustituciones) d.sustituciones = (S.d && S.d.sustituciones) || LS.get('sust', []);
   const previo = S.d;
   reaplicarCola(d);

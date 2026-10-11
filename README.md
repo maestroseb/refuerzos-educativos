@@ -94,6 +94,15 @@ estas pestañas: `Registros`, `Alumnado`, `Docentes`, `Horarios`, `Tramos`,
    **Sincronizar**. Quien despliega debe tener acceso a esa hoja.
 5. Da de alta al alumnado de refuerzo en **Ajustes → Alumnado**.
 
+## Cursos académicos
+
+Cada curso se guarda en su propia hoja («… · 2026-27»). La app abre siempre el
+curso activo. En **Ajustes → General → Curso académico** se inicia el
+siguiente: se copian configuración, tramos, grupos, profesorado y, si se
+marca, el alumnado; registros, horarios, periodo y festivos empiezan vacíos.
+Los cursos anteriores se consultan en solo lectura desde Diario y Datos (la
+administración ve todo; cada docente, lo suyo).
+
 ## Usarla en otro centro
 
 La app funciona igual **con o sin** la hoja madre de localizaciones y
