@@ -126,8 +126,8 @@ function detalleRegistro(id) {
 
 /* Si lo anotó el sustituto/a (entra con su email y actúa como el titular). */
 function porSustituto(r) {
-  const d = S.idx.doc[r.docente_id];
-  return d && d.sustituto && r.email && String(r.email).toLowerCase() === String(d.sustituto_email || '').toLowerCase() ? ' por ' + esc(d.sustituto) + ' (sustitución)' : '';
+  const m = String(r.docente_txt || '').match(/\(sust\.: (.+)\)$/);
+  return m ? ' por ' + esc(m[1]) + ' (sustitución)' : '';
 }
 
 function exportarCSV(regs) {

@@ -9,8 +9,10 @@
 
 function sincronizarMadre(idOUrl) {
   exigirAdmin_();
-  if (idOUrl) setConfig_('MADRE_ID', idDeUrl_(idOUrl));
-  return conCandado_(sincronizar_);
+  return conCandado_(function() {
+    if (idOUrl) setConfig_('MADRE_ID', idDeUrl_(idOUrl));
+    return sincronizar_();
+  });
 }
 
 /** Ejecutada por el activador diario. Al ser pública, si no la lanza un
@@ -58,6 +60,8 @@ function sincronizar_() {
   const ocup = leer('_Ocupaciones');
   const semanas = leer('_SemanasAlternas');
   if (!tramos.length || !grupos.length || !docentes.length) throw new Error('La hoja no parece la hoja madre: faltan tramos, grupos o docentes (no se ha cambiado nada).');
+  // Una pestaña vacía o renombrada en la madre no debe borrar lo que ya hay aquí.
+  if (!ocup.length && filas_(HOJAS.HORARIOS).some(function(h) { return h.origen === 'madre'; })) throw new Error('La hoja madre no tiene ocupaciones: no se ha cambiado nada.');
 
   reemplazar_(HOJAS.TRAMOS, tramos.map(function(t) {
     return { id: s(t.id), orden: s(t.orden), hora_inicio: hhmm(t.hora_inicio), hora_fin: hhmm(t.hora_fin),
@@ -66,7 +70,7 @@ function sincronizar_() {
   reemplazar_(HOJAS.GRUPOS, grupos.map(function(g) {
     return { id: s(g.id), nombre_corto: s(g.nombre_corto), nombre_largo: s(g.nombre_largo), orden: s(g.orden) };
   }));
-  reemplazar_(HOJAS.SEMANAS, semanas.map(function(w) {
+  if (semanas.length || !filas_(HOJAS.SEMANAS).length) reemplazar_(HOJAS.SEMANAS, semanas.map(function(w) {
     return { id: s(w.id), fecha_inicio: fecha(w.fecha_inicio), fecha_fin: fecha(w.fecha_fin), tipo: s(w.tipo).toUpperCase() };
   }));
 

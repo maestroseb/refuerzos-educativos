@@ -27,15 +27,19 @@ El horario de refuerzos se toma de la **hoja madre**, que es la base de datos de
     alumnado, actividad del centro u otro. La app consulta las
     **sustituciones de la hoja madre**: si en ese tramo el docente estaba
     sustituyendo, lo avisa y lo deja marcado; basta con guardar.
-- **Diario.** Recoge todas las sesiones del centro, que puede ver todo el
-  profesorado. Se puede filtrar por periodo, grupo, alumno o alumna, materia y
-  docente, buscar texto y exportar a CSV. Cada docente edita y borra sus propios
-  registros; la administración, todos.
+- **Diario.** La administración ve todas las sesiones; cada docente, las suyas y
+  las de los grupos en los que da refuerzo. Incluye **Mi mes** (calendario con
+  punto rojo si falta anotar algún refuerzo y verde si está todo), la lista de
+  **pendientes de anotar** y las cifras del mes. Se puede filtrar por periodo,
+  grupo, alumno o alumna, materia y docente, buscar texto y exportar a CSV. Cada
+  docente edita y borra sus propios registros; la administración, todos.
 - **Datos.** Indicadores de sesiones, alumnado atendido, aprovechamiento medio
   y cumplimiento (sesiones registradas frente a las previstas por horario).
   Incluye gráficos de sesiones por semana y materia, evolución del
   aprovechamiento, un mapa de calor por día y tramo, y tablas de alumnado y
   profesorado. Cada alumno o alumna tiene una **ficha** que se puede imprimir.
+  La administración ve además el **cumplimiento por docente** del mes, con sus
+  refuerzos sin anotar y un botón para enviarle un recordatorio por correo.
 - **Ajustes** (solo administración):
   - Conexión con la hoja madre, con sincronización manual o cada noche.
   - Profesorado, con sus emails, los de sus sustitutos y el rol de administración.
@@ -130,4 +134,7 @@ docentes marcan la sesión como «No se pudo realizar» con el motivo.
 npm i -g playwright         # si no está instalado
 node tools/preview.js       # construye tools/out/index.html y hace capturas (móvil, PC, oscuro)
 node tools/flujo.js         # prueba un flujo completo: registrar, añadir alumno, diario, ficha, ajustes
+node tools/conjunto.js      # refuerzo conjunto (varios grupos en un tramo)
+node tools/rapido.js        # guardado optimista en lote y arranque desde la copia local
+node tools/red.js           # cola sin conexión y reintento
 ```

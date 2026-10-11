@@ -27,17 +27,19 @@ function inicio(curso) {
     tramos: limpia(filas_(HOJAS.TRAMOS)),
     grupos: limpia(filas_(HOJAS.GRUPOS)),
     semanas: limpia(filas_(HOJAS.SEMANAS)),
+    // Sin administración, los emails del claustro no hacen falta en el navegador.
     docentes: filas_(HOJAS.DOCENTES).map(function(d) {
+      const ver = yo.admin || d.id === yo.docenteId;
       return { id: d.id, nombre_corto: d.nombre_corto, nombre_completo: d.nombre_completo,
-        email: d.email, sustituto: d.sustituto, sustituto_email: d.sustituto_email,
+        email: ver ? d.email : '', sustituto: d.sustituto, sustituto_email: ver ? d.sustituto_email : '',
         es_admin: si_(d.es_admin), activo: d.activo === '' ? true : si_(d.activo), origen: d.origen };
     }),
     horarios: limpia(filas_(HOJAS.HORARIOS)),
     alumnado: filas_(HOJAS.ALUMNADO).map(function(a) {
-      const r = limpio_(a); r.activo = a.activo === '' ? true : si_(a.activo); return r;
+      const r = limpio_(a); r.activo = a.activo === '' ? true : si_(a.activo); if (!yo.admin) delete r.creado_por; return r;
     }),
     registros: filas_(HOJAS.REGISTROS).filter(visible).map(function(r) {
-      const o = limpio_(r); o.aprovechamiento = Number(r.aprovechamiento) || 0; return o;
+      const o = limpio_(r); o.aprovechamiento = Number(r.aprovechamiento) || 0; if (!yo.admin) delete o.email; return o;
     })
   };
 }
@@ -48,7 +50,7 @@ function inicio(curso) {
  * da refuerzo según su horario.
  */
 function registroVisible_(yo) {
-  if (yo.admin || yo.elegible) return function() { return true; };
+  if (yo.admin) return function() { return true; };
   const grupos = {};
   filas_(HOJAS.HORARIOS).forEach(function(h) {
     if (h.docente_id === yo.docenteId) String(h.grupo_ids).split(',').forEach(function(g) { if (g) grupos[g] = 1; });
@@ -83,16 +85,20 @@ function sustituciones() {
 const OPS_LOTE_ = ['guardarRegistro', 'borrarRegistro', 'guardarAlumno', 'importarAlumnado', 'borrarAlumno',
   'guardarDocente', 'borrarDocente', 'guardarHorarioDocente', 'guardarAjustes', 'activarSincroDiaria',
   'guardarTramo', 'borrarTramo', 'guardarGrupo', 'borrarGrupo'];
-function lote(ops) {
+function lote(ops, curso) {
   if (!Array.isArray(ops) || ops.length > 50) throw new Error('Lote no válido.');
-  return ops.map(function(op) {
-    if (!op || OPS_LOTE_.indexOf(op.fn) < 0) return { ok: false, error: 'Operación no permitida.' };
-    try { return { ok: true, r: globalThis[op.fn].apply(null, Array.isArray(op.args) ? op.args : []) }; }
-    catch (e) {
-      // Candado ocupado: es pasajero, se reintenta el lote entero (es idempotente).
-      if (/lock|bloqueo/i.test(String(e && e.message))) throw e;
-      return { ok: false, error: (e && e.message) || String(e) };
-    }
+  // Si entre tanto se ha iniciado otro curso, lo de la pestaña vieja no se guarda en el nuevo.
+  if (curso && curso !== cursoActivo_().curso) return ops.map(function() { return { ok: false, error: 'Ha empezado el curso ' + cursoActivo_().curso + '. Recarga la página.' }; });
+  // Un solo candado para todo el lote (y una sola lectura de cada pestaña).
+  return conCandado_(function() {
+    enLote_ = true;
+    try {
+      return ops.map(function(op) {
+        if (!op || OPS_LOTE_.indexOf(op.fn) < 0) return { ok: false, error: 'Operación no permitida.' };
+        try { return { ok: true, r: globalThis[op.fn].apply(null, Array.isArray(op.args) ? op.args : []) }; }
+        catch (e) { return { ok: false, error: (e && e.message) || String(e) }; }
+      });
+    } finally { enLote_ = false; }
   });
 }
 
@@ -124,7 +130,7 @@ function nuevoCurso(op) {
     lista.push({ curso: nuevo, id: ss.getId() });
     props.setProperty('CURSOS_' + sid_(), JSON.stringify(lista));
     props.setProperty('CURSO_' + sid_(), nuevo);
-    props.setProperty('ESQUEMA_OK_' + ss.getId(), String(JSON.stringify(ESQUEMA).length));
+    props.setProperty('ESQUEMA_OK_' + ss.getId(), firmaEsquema_());
     cacheSS_ = null;
     return nuevo;
   });
@@ -141,7 +147,8 @@ function guardarRegistro(r) {
     if (fd.getDay() === 0 || fd.getDay() === 6) throw new Error('La fecha debe ser un día lectivo (lunes a viernes).');
     if (r.fecha > Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')) throw new Error('No se pueden registrar sesiones futuras.');
     const cal = calendario_(config_());
-    if (!r.id && ((cal.inicio && r.fecha < cal.inicio) || (cal.fin && r.fecha > cal.fin) ||
+    const yaExiste = r.id && filas_(HOJAS.REGISTROS).some(function(x) { return x.id === r.id; });
+    if (!yaExiste && ((cal.inicio && r.fecha < cal.inicio) || (cal.fin && r.fecha > cal.fin) ||
         cal.festivos.some(function(x) { return x.desde <= r.fecha && r.fecha <= x.hasta; }))) throw new Error('Ese día no hay refuerzos (festivo o fuera del periodo).');
     const ids = (r.alumno_ids || []).filter(Boolean);
     const noRealizada = r.estado === 'no_realizada';
@@ -187,7 +194,7 @@ function guardarRegistro(r) {
 
 function borrarRegistro(id) {
   return conCandado_(function() {
-    const yo = yo_();
+    const yo = exigirAcceso_();
     const prev = filas_(HOJAS.REGISTROS).filter(function(x) { return x.id === id; })[0];
     if (!prev) return true;
     if (prev.docente_id !== yo.docenteId && !yo.admin) throw new Error('Solo puedes borrar tus propios registros.');
@@ -207,8 +214,9 @@ function guardarAlumno(a) {
     }
     const nombre = String(a.nombre || '').trim().replace(/\s+/g, ' ');
     if (!nombre) throw new Error('Escribe el nombre.');
-    const o = { id: a.id || '', nombre: nombre, grupo_id: a.grupo_id || '',
-      activo: a.activo === false ? 'false' : 'true', notas: a.notas || '' };
+    // Si no se indica, se conserva si estaba archivado (no se reactiva sin querer).
+    const activo = a.activo === false ? 'false' : a.activo === true ? 'true' : (prev ? (prev.activo || 'true') : 'true');
+    const o = { id: a.id || '', nombre: nombre, grupo_id: a.grupo_id || '', activo: activo, notas: a.notas || '' };
     if (!prev) o.creado_por = yo.email;
     const g = guardar_(HOJAS.ALUMNADO, o);
     g.activo = g.activo !== 'false';
@@ -236,7 +244,7 @@ function importarAlumnado(texto, grupoId, lista) {
       const o = { id: e.id || nuevoId_(), nombre: n, grupo_id: grupoId, activo: 'true', notas: '', creado_por: yo.email };
       nuevos.push(o); quedan.push(o.id);
     });
-    if (nuevos.length) reemplazar_(HOJAS.ALUMNADO, nuevos, function() { return false; });
+    anexar_(HOJAS.ALUMNADO, nuevos);
     return lista ? quedan : nuevos.map(function(n) { n.activo = true; return n; });
   });
 }
@@ -263,7 +271,7 @@ function guardarDocente(d) {
       email: String(d.email || '').trim().toLowerCase(),
       sustituto: String(d.sustituto || '').trim(),
       sustituto_email: String(d.sustituto_email || '').trim().toLowerCase(),
-      es_admin: d.es_admin ? 'true' : 'false', activo: d.activo === false ? 'false' : 'true'
+      es_admin: d.es_admin ? 'true' : 'false', activo: d.activo === false ? 'false' : ((previa_(HOJAS.DOCENTES, d.id) || {}).activo || 'true')
     };
     if (!previa_(HOJAS.DOCENTES, d.id)) o.origen = 'manual';
     const g = guardar_(HOJAS.DOCENTES, o);
@@ -321,7 +329,13 @@ function guardarTramo(t) {
   return conCandado_(function() { previa_(HOJAS.TRAMOS, t.id); return guardar_(HOJAS.TRAMOS, t); });
 }
 
-function borrarTramo(id) { exigirAdmin_(); return conCandado_(function() { return borrar_(HOJAS.TRAMOS, id); }); }
+function borrarTramo(id) {
+  exigirAdmin_();
+  return conCandado_(function() {
+    if (filas_(HOJAS.HORARIOS).some(function(h) { return h.tramo_id === id; }) || filas_(HOJAS.REGISTROS).some(function(r) { return r.tramo_id === id; })) throw new Error('El tramo se usa en horarios o registros: no se puede borrar.');
+    return borrar_(HOJAS.TRAMOS, id);
+  });
+}
 
 function guardarGrupo(g) {
   exigirAdmin_();
@@ -332,6 +346,8 @@ function borrarGrupo(id) {
   exigirAdmin_();
   return conCandado_(function() {
     if (filas_(HOJAS.ALUMNADO).some(function(a) { return a.grupo_id === id; })) throw new Error('El grupo tiene alumnado: muévelo antes a otro grupo.');
+    const usa = function(csv) { return (',' + csv + ',').indexOf(',' + id + ',') >= 0; };
+    if (filas_(HOJAS.HORARIOS).some(function(h) { return usa(h.grupo_ids); }) || filas_(HOJAS.REGISTROS).some(function(r) { return usa(r.grupo_id); })) throw new Error('El grupo se usa en horarios o registros: no se puede borrar.');
     return borrar_(HOJAS.GRUPOS, id);
   });
 }

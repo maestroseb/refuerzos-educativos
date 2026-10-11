@@ -41,7 +41,8 @@ function fallo(e) { toast((e && e.message) || 'Algo ha fallado', 'err'); console
 /* ---------- Almacén local (comodidades por usuario) ---------- */
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('ref.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem('ref.' + k, JSON.stringify(v)); } catch (e) {} }
+  set(k, v) { try { localStorage.setItem('ref.' + k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+  del(k) { try { localStorage.removeItem('ref.' + k); } catch (e) {} }
 };
 
 /* ---------- Fechas ---------- */
@@ -88,11 +89,15 @@ function indexar() {
   d.grupos.sort((a, b) => (+a.orden || 0) - (+b.orden || 0) || String(a.nombre_corto).localeCompare(b.nombre_corto, 'es', { numeric: true }));
   d.alumnado.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   d.docentes.sort((a, b) => nombreDoc(a).localeCompare(nombreDoc(b), 'es'));
-  d.registros.sort((a, b) => b.fecha.localeCompare(a.fecha) || ordenTramo(b.tramo_id) - ordenTramo(a.tramo_id) || String(b.creado).localeCompare(String(a.creado)));
-  d.tramos.forEach(t => I.tramo[t.id] = t);
+  d.tramos.forEach(t => I.tramo[t.id] = t);   // antes de ordenar registros (ordenTramo lo usa)
+  const ot = {}; d.tramos.forEach(t => ot[t.id] = minutos(t.hora_inicio) || 0);
+  d.registros.sort((a, b) => b.fecha.localeCompare(a.fecha) || (ot[b.tramo_id] || 0) - (ot[a.tramo_id] || 0) || String(b.creado).localeCompare(String(a.creado)));
   d.grupos.forEach(g => I.grupo[g.id] = g);
   d.docentes.forEach(x => I.doc[x.id] = x);
   d.alumnado.forEach(a => I.alu[a.id] = a);
+  // Registros por docente y fecha (el calendario y los pendientes lo consultan mucho).
+  I.reg = {};
+  d.registros.forEach(r => { const k = r.docente_id + '|' + r.fecha; (I.reg[k] = I.reg[k] || []).push(r); });
 }
 function ordenTramo(id) { const t = S.idx.tramo && S.idx.tramo[id]; return t ? minutos(t.hora_inicio) : 0; }
 const tramosLectivos = () => S.d.tramos.filter(t => String(t.es_recreo) !== 'true');
@@ -154,15 +159,20 @@ function enlazarCurso(el) {
   const v = el.querySelector('[data-volver]'); if (v) v.onclick = () => { volverActivo(); ir(S.view); };
 }
 function volverActivo() {
+  tokCurso++;
   if (!S.dAct) return;
   S.d = S.dAct; S.dAct = null; indexar(); mesCal = ''; mesCump = '';
   procesarCola();
 }
+let tokCurso = 0;
 function cambiarCurso(c) {
-  const act = S.dAct || S.d;
+  const act = S.dAct || S.d, tk = ++tokCurso;
   if (c === act.cursoActivo) { volverActivo(); return ir(S.view); }
+  // Mientras se envía un lote, sus respuestas deben aplicarse al curso activo.
+  if (COLA.activa) { toast('Guardando cambios… prueba en un momento'); return ir(S.view); }
   toast('Cargando el curso ' + c + '…');
   api('inicio', c).then(d => {
+    if (tk !== tokCurso) return;   // se pidió otra cosa entre tanto
     d.sustituciones = [];
     if (!S.dAct) S.dAct = S.d;
     S.d = d; indexar();
@@ -175,6 +185,7 @@ function cambiarCurso(c) {
 /* ---------- Navegación ---------- */
 function ir(v, opts) {
   if (v === 'ajustes' && !S.d) return;
+  if (v === 'ajustes' && !S.d.yo.admin) v = 'registrar';
   // Registrar y Ajustes trabajan siempre sobre el curso activo.
   if (S.d && S.d.soloLectura && (v === 'registrar' || v === 'ajustes')) volverActivo();
   S.view = v;
@@ -254,16 +265,16 @@ function aplicarTema() {
 aplicarTema();
 function menuUsuario() {
   const yo = S.d.yo, d = S.idx.doc[S.actor], tema = LS.get('tema', 'auto');
-  const puedeElegir = yo.admin || yo.elegible;
+  const puedeElegir = yo.admin;
   const opts = S.d.docentes.filter(x => x.activo).map(x => '<option value="' + esc(x.id) + '"' + (x.id === S.actor ? ' selected' : '') + '>' + esc(x.nombre_completo || x.nombre_corto) + '</option>').join('');
   const inn = abrirHoja(cabHoja(esc(d ? (d.sustituto && yo.comoSustituto ? d.sustituto : (d.nombre_completo || d.nombre_corto)) : 'Sin identificar'), esc(yo.email || 'Cuenta sin email visible') + (yo.admin ? ' · Administración' : '')) +
     '<div class="stack">' +
-    (puedeElegir ? '<div><label class="lbl" for="actorSel">' + (yo.admin ? 'Registrar en nombre de' : '¿Quién eres?') + '</label><select class="select" id="actorSel"><option value="">—</option>' + opts + '</select>' +
-      (yo.elegible && !yo.admin ? '<p class="muted" style="font-size:13px;margin:6px 0 0">Tu email no está en la lista de docentes. Pide a la administración que lo añada para entrar directamente.</p>' : '') + '</div>' : '') +
+    (puedeElegir ? '<div><label class="lbl" for="actorSel">' + 'Registrar en nombre de' + '</label><select class="select" id="actorSel"><option value="">—</option>' + opts + '</select>' +
+      '</div>' : '') +
     '<div><span class="lbl">Apariencia</span><div class="seg" id="temaSeg">' + [['auto', 'Automática'], ['light', 'Clara'], ['dark', 'Oscura']].map(([k, v]) => '<button aria-pressed="' + (tema === k) + '" data-t="' + k + '">' + v + '</button>').join('') + '</div></div>' +
     '</div>');
   const sel = inn.querySelector('#actorSel');
-  if (sel) sel.onchange = () => { S.actor = sel.value; LS.set('actor', S.actor); pintarYo(); toast('Ahora registras como ' + nombreDocId(S.actor)); if (S.view === 'registrar') ir('registrar'); };
+  if (sel) sel.onchange = () => { S.actor = sel.value; LS.set('actor', S.actor); pintarYo(); toast('Ahora registras como ' + nombreDocId(S.actor)); ir(S.view, { keepScroll: true }); };
   inn.querySelectorAll('#temaSeg button').forEach(b => b.onclick = () => {
     LS.set('tema', b.dataset.t); aplicarTema();
     inn.querySelectorAll('#temaSeg button').forEach(x => x.setAttribute('aria-pressed', x === b));
@@ -297,7 +308,7 @@ function rangoFechas() {
   if (S.d.soloLectura && F.rango !== 'custom') { const a = +S.d.curso.slice(0, 4); return [a + '-09-01', (a + 1) + '-08-31']; }
   const h = hoyIso();
   const y = deIso(h).getFullYear(), m = deIso(h).getMonth();
-  const inicioCurso = (m >= 8 ? y : y - 1) + '-09-01';
+  const inicioCurso = (S.d.soloLectura ? +S.d.curso.slice(0, 4) : (m >= 8 ? y : y - 1)) + '-09-01';
   switch (F.rango) {
     case 'semana': return [lunesDe(h), sumaDias(lunesDe(h), 6)];
     case 'mes': return [h.slice(0, 8) + '01', h];
@@ -306,7 +317,7 @@ function rangoFechas() {
       const t = m >= 8 ? [y + '-09-01', y + '-12-31'] : m <= 2 ? [y + '-01-01', y + '-03-31'] : [y + '-04-01', y + '-06-30'];
       return t;
     }
-    case 'custom': return [F.desde || inicioCurso, F.hasta || h];
+    case 'custom': return [F.desde || inicioCurso, F.hasta || (S.d.soloLectura ? (+S.d.curso.slice(0, 4) + 1) + '-08-31' : h)];
     default: return [inicioCurso, (m >= 8 ? y + 1 : y) + '-08-31'];
   }
 }
@@ -404,7 +415,7 @@ const RESP = {
 function hacer(fn, args, msg, txt) {
   LOCAL[fn](...args); indexar();
   COLA.items.push({ fn: fn, args: args, txt: txt || msg || '' });
-  LS.set('cola', COLA.items);
+  guardarCola();
   if (msg) toast(msg);
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   refrescarVista(); pronto();
@@ -414,7 +425,7 @@ let tCola;
 function pronto() { pintarCola(); clearTimeout(tCola); tCola = setTimeout(procesarCola, 250); }
 function encolar(p, prev) {
   COLA.items.push({ p: p, prev: prev ? Object.assign({}, prev) : null });
-  LS.set('cola', COLA.items);
+  guardarCola();
   pronto();
 }
 /* Vuelve a aplicar lo pendiente sobre datos recién llegados del servidor. */
@@ -429,12 +440,17 @@ function reaplicarCola(d) {
   });
 }
 /* Envía de una vez lo pendiente (hasta 25 cambios) en una sola llamada. */
+/* Si el navegador se queda sin espacio, se sacrifica la copia de datos antes que la cola. */
+function guardarCola() {
+  if (!LS.set('cola', COLA.items)) { LS.del('datos'); if (!LS.set('cola', COLA.items)) toast('El navegador no tiene espacio: no cierres la pestaña hasta que se guarde.', 'err'); }
+}
 function procesarCola() {
   if (COLA.activa || COLA.espera || !COLA.items.length || S.dAct) return pintarCola();
   COLA.activa = true; pintarCola();
   const lote = COLA.items.slice(0, 25);
-  api('lote', lote.map(it => ({ fn: it.fn || 'guardarRegistro', args: it.fn ? it.args : [it.p] }))).then(res => {
+  api('lote', lote.map(it => ({ fn: it.fn || 'guardarRegistro', args: it.fn ? it.args : [it.p] })), (S.dAct || S.d).cursoActivo).then(res => {
     let resinc = false;
+    try {
     lote.forEach((it, i) => {
       COLA.items.shift();
       const x = res[i] || { ok: false, error: 'Sin respuesta' };
@@ -442,12 +458,13 @@ function procesarCola() {
       else if (it.fn) { toast('No se guardó' + (it.txt ? ' «' + it.txt + '»' : '') + ': ' + x.error, 'err'); resinc = true; }
       else falloRegistro(it, x.error);
     });
-    LS.set('cola', COLA.items);
-    indexar(); refrescarVista();
+    guardarCola();
+    indexar(); refrescarVista(true);
+    } catch (e) { console.error(e); }   // un fallo al pintar no es un fallo de red
     COLA.activa = false;
     if (resinc) resincronizar();
     procesarCola();
-  }).catch(e => {
+  }, e => {
     COLA.activa = false;
     // Sin conexión (o fallo general): se reintenta el lote entero; los envíos son idempotentes.
     COLA.espera = true; pintarCola();
@@ -462,7 +479,11 @@ function exitoItem(it, r) {
   const g = S.d.registros.find(x => x.id === r.id); if (pend) g._pend = true; else delete g._pend;
 }
 function falloRegistro(it, msg) {
-  if (it.prev) { const i = S.d.registros.findIndex(x => x.id === it.p.id); if (i >= 0) S.d.registros[i] = it.prev; }
+  if (it.prev) {
+    const i = S.d.registros.findIndex(x => x.id === it.p.id);
+    if (!COLA.items.some(x => x.p && x.p.id === it.p.id)) delete it.prev._pend;
+    if (i >= 0) S.d.registros[i] = it.prev;
+  }
   else S.d.registros = S.d.registros.filter(x => x.id !== it.p.id);
   LS.set('fallido', it.p);
   toast('No se guardó la sesión del ' + fechaCorta(it.p.fecha) + ': ' + msg, 'err', { txt: 'Recuperar', fn: recuperarFallido });
@@ -482,10 +503,10 @@ function pintarCola() {
   el.innerHTML = '<span class="cola-spin" aria-hidden="true"></span>' + (COLA.espera ? 'Sin conexión · ' + n + ' pendiente' + (n > 1 ? 's' : '') + ', reintentando…' : 'Guardando' + (n > 1 ? ' (' + n + ')' : '') + '…');
 }
 /* Repinta lo que depende de los datos sin tocar lo que se está escribiendo. */
-function refrescarVista() {
+function refrescarVista(desdeCola) {
   if (S.view === 'registrar' && $('#cSesion')) { pintarSesion(); pintarBanner(); pintarTiles(); }
   else if (S.view === 'diario' && $('#dList')) { pintarDiario(); pintarMes(); }
-  else if (S.view === 'ajustes' && $('#aBody') && !$('dialog[open]') && !(document.activeElement && document.activeElement.closest('#aBody') && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) pintarAjustes();
+  else if (S.view === 'ajustes' && !desdeCola && $('#aBody') && !$('dialog[open]') && !(document.activeElement && document.activeElement.closest('#aBody') && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) pintarAjustes();
 }
 window.addEventListener('beforeunload', e => { if (COLA.items.length) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -502,14 +523,16 @@ function cargarDatos(d) {
   const previo = S.d;
   reaplicarCola(d);
   indexar();
-  S.actor = d.yo.docenteId || ((d.yo.elegible || d.yo.admin) ? LS.get('actor', '') : '');
-  if (S.actor && !S.idx.doc[S.actor]) S.actor = d.yo.docenteId || '';
+  // La administración conserva a quién eligió en «Registrar en nombre de».
+  const elegido = d.yo.admin ? LS.get('actor', '') : '';
+  S.actor = elegido && S.idx.doc[elegido] ? elegido : (d.yo.docenteId || '');
   pintarYo();
   $('[data-view="ajustes"]').hidden = !d.yo.admin;
   if (!previo || previo.yo.email !== d.yo.email || previo.yo.admin !== d.yo.admin) {
     const v = previo ? S.view : LS.get('vista', 'registrar');
     ir(v === 'ajustes' && !d.yo.admin ? 'registrar' : (VISTAS[v] ? v : 'registrar'));
-  } else if (S.view === 'registrar' || $('dialog[open]')) refrescarVista();
+  } else if ($('dialog[open]')) refrescarVista();
+  else if (S.view === 'registrar' && $('#cSesion') && S.f && S.f._actor === S.actor) refrescarVista();
   else ir(S.view, { keepScroll: true });
 }
 function llegaSust(s) {
@@ -531,7 +554,16 @@ function resincronizar() {
   }).catch(() => {});
 }
 function arrancar() {
-  const copia = LS.get('datos', null);
+  // En un ordenador compartido, lo guardado en el navegador por otra cuenta
+  // (copia de datos, cola sin enviar, borradores) se descarta.
+  const yoEmail = String(window.YO_EMAIL || '');
+  if (LS.get('owner', '') !== yoEmail) {
+    ['datos', 'cola', 'sust', 'fallido', 'borrador', 'actor', 'filtros'].forEach(k => LS.del(k));
+    COLA.items = [];
+    Object.assign(F, { quien: 'todos', rango: 'curso', grupo: '', alumno: '', docente: '', materia: '', estado: '', q: '', desde: '', hasta: '' });
+    LS.set('owner', yoEmail);
+  }
+  const copia = yoEmail ? LS.get('datos', null) : null;
   if (copia && copia.yo) { try { cargarDatos(copia); } catch (e) { S.d = null; } }
   // Datos y sustituciones se piden a la vez; las sustituciones se aplican tras los datos.
   const sust = api('sustituciones');
@@ -539,10 +571,9 @@ function arrancar() {
     LS.set('datos', d);
     cargarDatos(d);
     setTimeout(procesarCola, 300);
-    if (!S.actor && d.docentes.length && d.yo.elegible && !d.yo.admin) setTimeout(menuUsuario, 400);
-    api('sustituciones').then(llegaSust).catch(() => {});
+    sust.then(llegaSust).catch(() => {});
   }).catch(e => {
-    if (S.d) { toast('Sin conexión: ves la última copia guardada', 'err'); return; }
+    if (S.d) { toast('Sin conexión: ves la última copia guardada', 'err'); setTimeout(procesarCola, 300); return; }
     $('#main').innerHTML = '<div class="empty"><h2 class="h2">No he podido cargar los datos</h2><p>' + esc(e.message) + '</p><button class="btn" onclick="location.reload()">Reintentar</button></div>';
   });
 }
