@@ -134,6 +134,9 @@ const noHecha = r => r.estado === 'no_realizada';
 const hechas = regs => regs.filter(r => !noHecha(r));
 /* Sustitución (según la hoja madre) que hizo un docente en esa fecha y tramo. */
 const sustitucionEn = (docId, fecha, tramo) => (S.d.sustituciones || []).find(x => x.sustituto_id === docId && x.fecha === fecha && x.tramo_id === tramo);
+/* Día en que el docente faltó al centro (alguien le sustituyó, según la hoja madre). */
+const ausenciaEn = (docId, fecha) => (S.d.sustituciones || []).find(x => x.ausente_id === docId && x.fecha === fecha);
+const motivoAuto = f => f.sust ? 'Sustitución' : f.aus ? 'Ausencia del docente' : '';
 const puedoEditar = r => S.d.yo.admin || r.docente_id === S.actor;
 
 /* ---------- Navegación ---------- */
@@ -472,9 +475,10 @@ function llegaSust(s) {
   LS.set('sust', s); S.d.sustituciones = s;
   // Si el formulario está sin tocar, se le aplica la sustitución recién conocida.
   const f = S.f;
-  if (S.view === 'registrar' && f && !f.id && !f.sust && !f.trabajado.trim() && f.estado === 'realizada') {
+  if (S.view === 'registrar' && f && !f.id && !f.sust && !f.aus && !f.trabajado.trim() && f.estado === 'realizada') {
     f.sust = sustitucionEn(S.actor, f.fecha, f.tramo_id) || null;
-    if (f.sust && !registrosDe(S.actor, f.fecha, f.tramo_id).length) { f.estado = 'no_realizada'; f.motivo = 'Sustitución'; return ir('registrar', { keepScroll: true }); }
+    f.aus = f.sust ? null : ausenciaEn(S.actor, f.fecha) || null;
+    if ((f.sust || f.aus) && !registrosDe(S.actor, f.fecha, f.tramo_id).length) { f.estado = 'no_realizada'; f.motivo = motivoAuto(f); return ir('registrar', { keepScroll: true }); }
   }
   refrescarVista();
 }
