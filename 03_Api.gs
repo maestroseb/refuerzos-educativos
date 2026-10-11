@@ -102,6 +102,9 @@ function guardarRegistro(r) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.fecha)) || isNaN(fd) || Utilities.formatDate(fd, tz, 'yyyy-MM-dd') !== r.fecha) throw new Error('Fecha no válida.');
     if (fd.getDay() === 0 || fd.getDay() === 6) throw new Error('La fecha debe ser un día lectivo (lunes a viernes).');
     if (r.fecha > Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')) throw new Error('No se pueden registrar sesiones futuras.');
+    const cal = calendario_(config_());
+    if (!r.id && ((cal.inicio && r.fecha < cal.inicio) || (cal.fin && r.fecha > cal.fin) ||
+        cal.festivos.some(function(x) { return x.desde <= r.fecha && r.fecha <= x.hasta; }))) throw new Error('Ese día no hay refuerzos (festivo o fuera del periodo).');
     const ids = (r.alumno_ids || []).filter(Boolean);
     const noRealizada = r.estado === 'no_realizada';
     if (noRealizada && !r.motivo) throw new Error('Indica por qué no se realizó.');
