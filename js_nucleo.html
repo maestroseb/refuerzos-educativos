@@ -69,6 +69,17 @@ function tipoSemana(f) {
   return w ? String(w.tipo || '').toUpperCase() : '';
 }
 
+/* Día con refuerzos: lunes a viernes, dentro del periodo configurado, no
+   festivo y, si hay calendario de semanas A/B, dentro de una semana lectiva. */
+function enCurso(f) {
+  const c = S.d.calendario || {};
+  if (!diaDe(f) || (c.inicio && f < c.inicio) || (c.fin && f > c.fin)) return false;
+  if ((c.festivos || []).some(x => x.desde <= f && f <= (x.hasta || x.desde))) return false;
+  if (S.d.semanas.length && !S.d.semanas.some(w => w.fecha_inicio <= f && f <= (w.fecha_fin || w.fecha_inicio))) return false;
+  return true;
+}
+const esFestivo = f => ((S.d.calendario || {}).festivos || []).some(x => x.desde <= f && f <= (x.hasta || x.desde));
+
 /* ---------- Índices ---------- */
 function indexar() {
   const d = S.d, I = S.idx = {};
@@ -260,6 +271,7 @@ function rangoFechas() {
   }
 }
 function filtrar(regs) {
+  if (!S.d.yo.admin) { F.quien = 'todos'; F.docente = ''; }
   const [a, b] = rangoFechas(), q = F.q.trim().toLowerCase();
   return regs.filter(r => {
     if (r.fecha < a || r.fecha > b) return false;
@@ -274,17 +286,19 @@ function filtrar(regs) {
   });
 }
 function barraFiltros(onChange, conBusqueda) {
+  if (!S.d.yo.admin) { F.quien = 'todos'; F.docente = ''; }
   const opt = (v, t, sel) => '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(t) + '</option>';
   const alus = S.d.alumnado.filter(a => !F.grupo || a.grupo_id === F.grupo);
   const html = '<div class="filters" role="group" aria-label="Filtros">' +
-    '<div class="seg" data-f="quien">' + opt2('todos', 'Todo el centro') + opt2('mios', 'Mis sesiones') + '</div>' +
+    // Sin administración ya solo llegan sus sesiones y las de sus grupos: sobran «quién» y «docente».
+    (S.d.yo.admin ? '<div class="seg" data-f="quien">' + opt2('todos', 'Todo el centro') + opt2('mios', 'Mis sesiones') + '</div>' : '') +
     '<select class="select sm" data-f="rango" aria-label="Periodo">' + [['semana', 'Esta semana'], ['30', 'Últimos 30 días'], ['mes', 'Este mes'], ['trim', 'Este trimestre'], ['curso', 'Todo el curso'], ['custom', 'Personalizado…']].map(([v, t]) => opt(v, t, F.rango)).join('') + '</select>' +
     (F.rango === 'custom' ? '<input type="date" class="input sm" data-f="desde" value="' + esc(F.desde) + '" aria-label="Desde"><input type="date" class="input sm" data-f="hasta" value="' + esc(F.hasta) + '" aria-label="Hasta">' : '') +
     '<select class="select sm" data-f="grupo" aria-label="Grupo">' + opt('', 'Todos los grupos', F.grupo) + S.d.grupos.map(g => opt(g.id, g.nombre_corto, F.grupo)).join('') + '</select>' +
     '<select class="select sm" data-f="alumno" aria-label="Alumno o alumna">' + opt('', 'Todo el alumnado', F.alumno) + alus.map(a => opt(a.id, a.nombre, F.alumno)).join('') + '</select>' +
     '<select class="select sm" data-f="materia" aria-label="Materia">' + opt('', 'Todas las materias', F.materia) + S.d.materias.map(m => opt(m, m, F.materia)).join('') + '</select>' +
     '<select class="select sm" data-f="estado" aria-label="Estado">' + opt('', 'Realizadas y no', F.estado || '') + opt('no', 'Solo no realizadas', F.estado || '') + '</select>' +
-    (F.quien === 'todos' ? '<select class="select sm" data-f="docente" aria-label="Docente">' + opt('', 'Todo el profesorado', F.docente) + S.d.docentes.map(x => opt(x.id, nombreDoc(x), F.docente)).join('') + '</select>' : '') +
+    (F.quien === 'todos' && S.d.yo.admin ? '<select class="select sm" data-f="docente" aria-label="Docente">' + opt('', 'Todo el profesorado', F.docente) + S.d.docentes.map(x => opt(x.id, nombreDoc(x), F.docente)).join('') + '</select>' : '') +
     (hayFiltros() ? '<button class="btn sm" data-reset>Limpiar</button>' : '') +
     '</div>' +
     (conBusqueda ? '<div class="search" style="margin:6px 0 2px">' + IC.search + '<input class="input sm" type="search" data-f="q" placeholder="Buscar en lo trabajado, alumnado, docente…" value="' + esc(F.q) + '" aria-label="Buscar"></div>' : '');
@@ -323,7 +337,14 @@ const LOCAL = {
   guardarDocente: d => upsert(S.d.docentes, Object.assign({ origen: 'manual' }, S.d.docentes.find(x => x.id === d.id) || {}, d, { nombre_corto: String(d.nombre_corto || d.nombre_completo).trim(), nombre_completo: String(d.nombre_completo || d.nombre_corto).trim(), email: String(d.email || '').trim().toLowerCase(), sustituto_email: String(d.sustituto_email || '').trim().toLowerCase() })),
   borrarDocente: id => { quita('docentes', x => x.id === id); quita('horarios', h => h.docente_id === id); },
   guardarHorarioDocente: (doc, fr) => { quita('horarios', h => h.docente_id === doc); fr.forEach(f => S.d.horarios.push({ id: f.id, docente_id: doc, dia: f.dia, tramo_id: f.tramo_id, grupo_ids: [].concat(f.grupo_ids).join(','), semana: f.semana || '', origen: 'manual' })); },
-  guardarAjustes: c => { if (c.centro != null) S.d.centro = String(c.centro).trim(); if (c.materias) S.d.materias = c.materias.slice(); },
+  guardarAjustes: c => {
+    if (c.centro != null) S.d.centro = String(c.centro).trim();
+    if (c.materias) S.d.materias = c.materias.slice();
+    const cal = S.d.calendario = S.d.calendario || { inicio: '', fin: '', festivos: [] };
+    if (c.inicio != null) cal.inicio = c.inicio;
+    if (c.fin != null) cal.fin = c.fin;
+    if (c.festivos) cal.festivos = c.festivos.map(x => ({ desde: x.desde, hasta: x.hasta && x.hasta > x.desde ? x.hasta : x.desde }));
+  },
   activarSincroDiaria: v => { S.d.sincroDiaria = !!v; },
   guardarTramo: t => upsert(S.d.tramos, t),
   borrarTramo: id => quita('tramos', x => x.id === id),
@@ -423,7 +444,7 @@ function pintarCola() {
 /* Repinta lo que depende de los datos sin tocar lo que se está escribiendo. */
 function refrescarVista() {
   if (S.view === 'registrar' && $('#cSesion')) { pintarSesion(); pintarBanner(); pintarTiles(); }
-  else if (S.view === 'diario' && $('#dList')) pintarDiario();
+  else if (S.view === 'diario' && $('#dList')) { pintarDiario(); pintarMes(); }
   else if (S.view === 'ajustes' && $('#aBody') && !$('dialog[open]') && !(document.activeElement && document.activeElement.closest('#aBody') && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) pintarAjustes();
 }
 window.addEventListener('beforeunload', e => { if (COLA.items.length) { e.preventDefault(); e.returnValue = ''; } });
