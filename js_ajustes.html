@@ -49,10 +49,10 @@ function ajGeneral(c) {
 function ajDocentes(c) {
   const pinta = q => {
     const qq = (q || '').toLowerCase();
-    const lista = S.d.docentes.filter(d => !qq || (d.nombre_completo + ' ' + d.nombre_corto + ' ' + d.email).toLowerCase().indexOf(qq) >= 0);
+    const lista = S.d.docentes.filter(d => !qq || (d.nombre_completo + ' ' + d.nombre_corto + ' ' + d.email + ' ' + (d.sustituto || '') + ' ' + (d.sustituto_email || '')).toLowerCase().indexOf(qq) >= 0);
     $('#dl').innerHTML = lista.map(d => {
       const n = S.d.horarios.filter(h => h.docente_id === d.id).length;
-      return '<button class="row" data-d="' + esc(d.id) + '"><span class="ini">' + esc(iniciales(d.nombre_completo || d.nombre_corto)) + '</span><span class="grow"><b>' + esc(d.nombre_completo || d.nombre_corto) + (d.es_admin ? ' <span class="tag" style="--c:var(--mates)">admin</span>' : '') + '</b><small>' + esc(d.email || 'Sin email') + (d.sustituto ? ' · Sustituye: ' + esc(d.sustituto) : '') + ' · ' + n + (n === 1 ? ' franja' : ' franjas') + '</small></span>' + IC.right.replace('<svg', '<svg class="chev"') + '</button>';
+      return '<button class="row" data-d="' + esc(d.id) + '"><span class="ini">' + esc(iniciales(d.nombre_completo || d.nombre_corto)) + '</span><span class="grow"><b>' + esc(d.nombre_completo || d.nombre_corto) + (d.sustituto ? ' <span class="tag" style="--c:var(--star)">de baja</span>' : '') + (d.es_admin ? ' <span class="tag" style="--c:var(--mates)">admin</span>' : '') + '</b><small>' + esc(d.email || 'Sin email') + (d.sustituto ? ' · <span style="color:var(--ink-2);font-weight:600;display:inline">Sustituido/a por ' + esc(d.sustituto) + '</span>' : '') + ' · ' + n + (n === 1 ? ' franja' : ' franjas') + '</small></span>' + IC.right.replace('<svg', '<svg class="chev"') + '</button>';
     }).join('') || '<p class="muted" style="padding:12px">Sin resultados.</p>';
     c.querySelectorAll('[data-d]').forEach(b => b.onclick = () => editarDocente(S.idx.doc[b.dataset.d]));
   };
@@ -83,7 +83,7 @@ function ajHorarios(c) {
   const conHorario = new Set(S.d.horarios.map(h => h.docente_id));
   if (!ajDoc) ajDoc = (S.d.docentes.find(d => conHorario.has(d.id)) || S.d.docentes[0] || {}).id || '';
   if (!S.d.tramos.length) { c.innerHTML = '<div class="card empty"><p>Primero sincroniza la hoja madre o crea los tramos.</p></div>'; return; }
-  const opts = S.d.docentes.map(d => '<option value="' + esc(d.id) + '"' + (d.id === ajDoc ? ' selected' : '') + '>' + (conHorario.has(d.id) ? '● ' : '') + esc(d.nombre_completo || d.nombre_corto) + '</option>').join('');
+  const opts = S.d.docentes.map(d => '<option value="' + esc(d.id) + '"' + (d.id === ajDoc ? ' selected' : '') + '>' + (conHorario.has(d.id) ? '● ' : '') + esc(d.nombre_completo || d.nombre_corto) + (d.sustituto ? ' → ' + esc(d.sustituto) : '') + '</option>').join('');
   let fr = S.d.horarios.filter(h => h.docente_id === ajDoc).map(h => Object.assign({}, h, { grupo_ids: gruposDeFranja(h) }));
   const pinta = () => {
     let g = '<span></span>' + DIAS.map(d => '<span class="h">' + DIA_CORTO[d] + '</span>').join('');

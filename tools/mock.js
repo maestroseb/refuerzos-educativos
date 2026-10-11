@@ -6,7 +6,7 @@
     .map((t, i) => ({ id: t[0], orden: String(i + 1), hora_inicio: t[1], hora_fin: t[2], etiqueta: '', es_recreo: t[3] ? 'true' : 'false' }));
   const grupos = ['1ºA', '1ºB', '2ºA', '2ºB', '3ºA', '3ºB', '4ºA', '4ºB', '5ºA', '5ºB', '6ºA', '6ºB'].map((g, i) => ({ id: 'g' + i, nombre_corto: g, nombre_largo: g.replace('º', 'º de Primaria '), orden: String(i) }));
   const nd = ['Ana Martín Ruiz', 'Javier López Gil', 'Carmen Ortega Díaz', 'Luis Fernández Mora', 'Marta Sánchez Vega', 'Pablo Romero Ibáñez', 'Elena Castro Navarro', 'Sergio Molina Prieto', 'Lucía Herrera Campos', 'David Ramos Cano'];
-  const docentes = nd.map((n, i) => ({ id: 'd' + i, nombre_corto: n.split(' ')[0] + ' ' + n.split(' ')[1][0] + '.', nombre_completo: n, email: 'doc' + i + '@g.educaand.es', sustituto: '', sustituto_email: '', es_admin: i === 0, activo: true, origen: 'madre' }));
+  const docentes = nd.map((n, i) => ({ id: 'd' + i, nombre_corto: n.split(' ')[0] + ' ' + n.split(' ')[1][0] + '.', nombre_completo: n, email: 'doc' + i + '@g.educaand.es', sustituto: i === 2 ? 'Rosa Vidal Prieto' : '', sustituto_email: i === 2 ? 'rosa@g.educaand.es' : '', es_admin: i === 0, activo: true, origen: 'madre' }));
   const horarios = [];
   const D = ['L', 'M', 'X', 'J', 'V'];
   docentes.forEach((d, i) => { for (let k = 0; k < 5; k++) horarios.push({ id: 'h' + i + k, docente_id: d.id, dia: D[(i + k) % 5], tramo_id: pick(['t1', 't2', 't3', 't4', 't5']), grupo_ids: pick(grupos).id, semana: '', origen: 'madre' }); });
