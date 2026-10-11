@@ -26,6 +26,15 @@ function franjasDe(docId, fecha) {
 const gruposSel = x => String((x && x.grupo_id) || '').split(',').filter(Boolean);
 const enGrupos = (f, alu) => !!alu && gruposSel(f).indexOf(alu.grupo_id) >= 0;
 const gruposDeFranja = f => String(f.grupo_ids || '').split(',').filter(Boolean);
+/* Estado de un día para el calendario: '' (sin refuerzos que anotar),
+   'ok' (todas las franjas anotadas) o 'pend' (falta alguna ya empezada). */
+function estadoDia(docId, fecha) {
+  if (fecha > hoyIso() || !enCurso(fecha)) return '';
+  const ahora = ahoraMin();
+  const fr = franjasDe(docId, fecha).filter(f => fecha < hoyIso() || minutos((S.idx.tramo[f.tramo_id] || {}).hora_inicio) <= ahora);
+  if (!fr.length) return '';
+  return fr.every(f => registrosDe(docId, fecha, f.tramo_id).length) ? 'ok' : 'pend';
+}
 const registrosDe = (docId, fecha, tramo) => S.d.registros.filter(r => r.docente_id === docId && r.fecha === fecha && (!tramo || r.tramo_id === tramo));
 
 function fechaPorDefecto() {
@@ -69,7 +78,8 @@ function nuevoForm(fecha, tramo) {
   const prev = S.d.registros.find(r => !noHecha(r) && r.docente_id === S.actor && r.tramo_id === tramo && diaDe(r.fecha) === diaDe(fecha) && r.grupo_id === f.grupo_id && r.fecha < fecha);
   if (prev) { f.sugeridos = aluIds(prev).filter(i => S.idx.alu[i] && S.idx.alu[i].activo); f.materia = prev.materia; }
   const b = LS.get('borrador', null);
-  if (b && b.actor === S.actor && b.fecha === fecha && b.tramo_id === tramo && !b.id) Object.assign(f, b, { cambiarGrupo: false });
+  // El borrador no borra el grupo del horario si se guardó sin grupo.
+  if (b && b.actor === S.actor && b.fecha === fecha && b.tramo_id === tramo && !b.id) Object.assign(f, b, { cambiarGrupo: false, grupo_id: b.grupo_id || f.grupo_id });
   else if (f.sugeridos) f.alumnos = f.sugeridos.slice();
   f.extra = f.alumnos.filter(i => S.idx.alu[i] && !enGrupos(f, S.idx.alu[i]));
   // Si la hoja madre dice que en esa franja estaba sustituyendo, se propone "no realizada".
@@ -89,6 +99,7 @@ VISTAS.registrar = function(el, opts) {
   const d = S.d;
   if (!S.f || opts.reset || S.f._actor !== S.actor) { S.f = nuevoForm(); S.f._actor = S.actor; }
   if (opts.editar) cargarEdicion(opts.editar);
+  else if (opts.fecha) { S.f = nuevoForm(opts.fecha); S.f._actor = S.actor; }
   const doc = S.idx.doc[S.actor];
   const nombre = doc ? primerNombre(d.yo.comoSustituto && doc.sustituto ? doc.sustituto : (doc.nombre_corto || doc.nombre_completo)) : '';
   const h = new Date().getHours();
@@ -182,6 +193,7 @@ function pendientesSemana() {
   for (let i = 0; i < 5; i++) {
     const fe = sumaDias(lun, i);
     if (fe > hoy) break;
+    if (!enCurso(fe)) continue;
     franjasDe(S.actor, fe).forEach(f => {
       const t = S.idx.tramo[f.tramo_id] || {};
       if (fe === hoy && minutos(t.hora_inicio) > ahora) return;   // aún no ha empezado
@@ -195,7 +207,7 @@ function pintarTiles() {
   if (!c) return;
   const hoy = hoyIso(), lun = lunesDe(hoy);
   let previstas = 0;
-  for (let i = 0; i < 5; i++) previstas += franjasDe(S.actor, sumaDias(lun, i)).length;
+  for (let i = 0; i < 5; i++) if (enCurso(sumaDias(lun, i))) previstas += franjasDe(S.actor, sumaDias(lun, i)).length;
   const reg = new Set(S.d.registros.filter(r => r.docente_id === S.actor && r.fecha >= lun && r.fecha <= sumaDias(lun, 6)).map(r => r.fecha + r.tramo_id)).size;
   const rs = S.d.registros.filter(r => r.docente_id === S.actor && !noHecha(r) && r.fecha >= lun && r.fecha <= sumaDias(lun, 6));
   const v = rs.filter(r => +r.aprovechamiento > 0).map(r => +r.aprovechamiento);
@@ -224,9 +236,9 @@ function pintarSesion() {
   let dias = '';
   for (let i = 0; i < 5; i++) {
     const di = sumaDias(lunes, i), dd = deIso(di);
-    const has = franjasDe(S.actor, di).length > 0;
-    dias += '<button class="day' + (has ? ' has' : '') + (di === hoy ? ' today' : '') + '" data-fecha="' + di + '" aria-pressed="' + (di === f.fecha) + '"' + (di > hoy ? ' disabled' : '') +
-      ' aria-label="' + esc(fechaLarga(di)) + (has ? ', con refuerzo' : '') + '"><small>' + DIA_CORTO[DIAS[i]] + '</small><b>' + dd.getDate() + '</b><span class="dot"></span></button>';
+    const has = franjasDe(S.actor, di).length > 0 && (di > hoy || enCurso(di)), est = estadoDia(S.actor, di);
+    dias += '<button class="day' + (has ? ' has' : '') + (est ? ' e-' + est : '') + (di === hoy ? ' today' : '') + '" data-fecha="' + di + '" aria-pressed="' + (di === f.fecha) + '"' + (di > hoy ? ' disabled' : '') +
+      ' aria-label="' + esc(fechaLarga(di)) + (est === 'pend' ? ', falta por anotar' : est === 'ok' ? ', completo' : has ? ', con refuerzo' : esFestivo(di) ? ', festivo' : '') + '"><small>' + DIA_CORTO[DIAS[i]] + '</small><b>' + dd.getDate() + '</b><span class="dot"></span></button>';
   }
   const franjas = franjasDe(S.actor, f.fecha);
   const ahora = ahoraMin();

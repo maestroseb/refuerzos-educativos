@@ -6,11 +6,45 @@
 let limiteDiario = 60;
 VISTAS.diario = function(el) {
   limiteDiario = 60;
-  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Diario de sesiones</div><h1 class="h1">Lo que hemos <em>trabajado</em></h1></header><div id="fBar"></div><div id="dList"></div>';
+  el.innerHTML = cabeceraMovil() + '<header class="hero reveal"><div class="eyebrow">Diario de sesiones</div><h1 class="h1">Lo que hemos <em>trabajado</em></h1></header><div id="cMes"></div><div id="fBar"></div><div id="dList"></div>';
+  pintarMes();
   const pintaBarra = () => { const fb = $('#fBar'); fb.innerHTML = ''; fb.appendChild(barraFiltros(full => { if (full) pintaBarra(); limiteDiario = 60; pintarDiario(); }, true)); };
   pintaBarra();
   pintarDiario();
 };
+
+/* ---------- Mi mes: calendario con un punto por día (rojo si falta anotar
+   algún refuerzo, verde si está todo). Toca un día para ir a registrarlo. ---------- */
+let mesCal = '';
+function pintarMes() {
+  const c = $('#cMes');
+  if (!c) return;
+  if (!S.actor || !S.d.horarios.some(h => h.docente_id === S.actor)) { c.innerHTML = ''; return; }
+  const hoy = hoyIso();
+  if (!mesCal) mesCal = hoy.slice(0, 7);
+  const [y, m] = mesCal.split('-').map(Number);
+  const primero = mesCal + '-01', ult = iso(new Date(y, m, 0, 12));
+  let celdas = '', pend = 0, ok = 0;
+  // Rejilla de lunes a viernes: huecos antes del primer día lectivo de la semana.
+  const w0 = (deIso(primero).getDay() + 6) % 7;
+  if (w0 < 5) for (let i = 0; i < w0; i++) celdas += '<span></span>';
+  for (let f = primero; f <= ult; f = sumaDias(f, 1)) {
+    const w = (deIso(f).getDay() + 6) % 7;
+    if (w > 4) continue;
+    const est = estadoDia(S.actor, f), fest = esFestivo(f);
+    if (est === 'pend') pend++; else if (est === 'ok') ok++;
+    celdas += '<button class="cal-d' + (est ? ' e-' + est : '') + (fest ? ' fest' : '') + (f === hoy ? ' today' : '') + '" data-cal="' + f + '"' + (f > hoy ? ' disabled' : '') +
+      ' aria-label="' + esc(fechaLarga(f)) + (est === 'pend' ? ', falta por anotar' : est === 'ok' ? ', completo' : fest ? ', festivo' : '') + '"><b>' + deIso(f).getDate() + '</b><i></i></button>';
+  }
+  const prev = iso(new Date(y, m - 2, 1, 12)).slice(0, 7), next = iso(new Date(y, m, 1, 12)).slice(0, 7);
+  c.innerHTML = '<section class="card cal reveal" aria-label="Mi mes"><div class="cal-h"><button class="arrow" data-mes="' + prev + '" aria-label="Mes anterior">' + IC.left + '</button>' +
+    '<div class="grow"><b>' + MESES_L[m - 1].replace(/^./, x => x.toUpperCase()) + ' ' + y + '</b><small>' + (pend ? pend + (pend === 1 ? ' día por completar' : ' días por completar') : ok ? 'Todo anotado' : 'Sin refuerzos que anotar') + '</small></div>' +
+    '<button class="arrow" data-mes="' + next + '" aria-label="Mes siguiente"' + (next > hoy.slice(0, 7) ? ' disabled' : '') + '>' + IC.right + '</button></div>' +
+    '<div class="cal-g">' + ['L', 'M', 'X', 'J', 'V'].map(d => '<span class="cal-w">' + d + '</span>').join('') + celdas + '</div>' +
+    '<div class="cal-ley"><span><i class="e-pend"></i>Falta anotar</span><span><i class="e-ok"></i>Completo</span><span><i class="fest"></i>Festivo</span></div></section>';
+  c.querySelectorAll('[data-mes]').forEach(b => b.onclick = () => { mesCal = b.dataset.mes; pintarMes(); });
+  c.querySelectorAll('[data-cal]').forEach(b => b.onclick = () => ir('registrar', { fecha: b.dataset.cal }));
+}
 
 function pintarDiario() {
   const c = $('#dList');

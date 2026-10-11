@@ -30,12 +30,34 @@ function ajGeneral(c) {
     '<div><span class="lbl">Materias de refuerzo</span><div class="pills" id="mats">' + d.materias.map(m => '<span class="pill sm mat ' + claseMateria(m) + '" aria-pressed="true">' + esc(m) + '<button data-quita="' + esc(m) + '" aria-label="Quitar ' + esc(m) + '" style="margin-left:2px;opacity:.6">✕</button></span>').join('') +
     '<input class="input sm" id="nuevaMat" placeholder="Añadir…" style="width:130px;border-radius:999px"></div></div>' +
     '<div><button class="btn primary" id="gCentro">Guardar</button></div></section>' +
+    '<section class="card stack"><h2 class="h2">Calendario de refuerzos</h2><p class="muted" style="margin:4px 0 0">Marca en qué periodo se anotan refuerzos y qué días no hay clase. Esos días no cuentan como pendientes en el calendario de cada docente.' + (d.semanas.length ? ' Las semanas fuera del calendario A/B de la hoja madre tampoco cuentan.' : '') + '</p>' +
+    '<div class="grid2"><div><label class="lbl" for="calIni">Empiezan</label><input class="input" type="date" id="calIni" value="' + esc((d.calendario || {}).inicio || '') + '"></div><div><label class="lbl" for="calFin">Terminan</label><input class="input" type="date" id="calFin" value="' + esc((d.calendario || {}).fin || '') + '"></div></div>' +
+    '<div><span class="lbl">Festivos y días sin clase</span><div class="pills" id="fests"></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:10px"><div><label class="lbl" for="fDesde">Día (o desde)</label><input class="input sm" type="date" id="fDesde"></div><div><label class="lbl" for="fHasta">Hasta (opcional)</label><input class="input sm" type="date" id="fHasta"></div><button class="btn sm" id="fAdd">' + IC.plus + 'Añadir</button></div></div>' +
+    '<div><button class="btn primary" id="gCal">Guardar calendario</button></div></section>' +
     '<section class="card stack"><h2 class="h2">Datos</h2><p class="muted" style="margin:4px 0 0">Todo se guarda en una hoja de cálculo de tu Drive. Puedes abrirla para revisarla o hacer tus propias tablas.</p><div><a class="btn" href="' + esc(d.bdUrl) + '" target="_blank" rel="noopener">Abrir la hoja de datos ↗</a></div>' +
     '<p class="muted" style="font-size:12.5px;margin:0">Administran: quien despliega la app y el profesorado marcado como administración en «Profesorado».</p></section></div>';
   let mats = d.materias.slice();
   const gm = () => hacer('guardarAjustes', [{ materias: mats.slice() }], 'Materias guardadas');
   c.querySelectorAll('[data-quita]').forEach(b => b.onclick = () => { if (mats.length < 2) return; mats = mats.filter(m => m !== b.dataset.quita); gm(); });
   $('#nuevaMat').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) { mats.push(e.target.value.trim()); gm(); } };
+  let fests = ((d.calendario || {}).festivos || []).map(x => Object.assign({}, x));
+  const pintaFests = () => {
+    fests.sort((a, b) => a.desde.localeCompare(b.desde));
+    $('#fests').innerHTML = fests.map((x, i) => '<span class="pill sm" aria-pressed="false">' + esc(fechaCorta(x.desde) + (x.hasta && x.hasta !== x.desde ? ' – ' + fechaCorta(x.hasta) : '')) + '<button data-qf="' + i + '" aria-label="Quitar" style="margin-left:2px;opacity:.6">✕</button></span>').join('') || '<span class="muted" style="font-size:13.5px">Ninguno todavía.</span>';
+    c.querySelectorAll('[data-qf]').forEach(b => b.onclick = () => { fests.splice(+b.dataset.qf, 1); pintaFests(); });
+  };
+  pintaFests();
+  $('#fAdd').onclick = () => {
+    const de = $('#fDesde').value, ha = $('#fHasta').value;
+    if (!de) return toast('Elige el día', 'err');
+    fests.push({ desde: de, hasta: ha && ha > de ? ha : de }); $('#fDesde').value = $('#fHasta').value = ''; pintaFests();
+  };
+  $('#gCal').onclick = () => {
+    const ini = $('#calIni').value, fin = $('#calFin').value;
+    if (ini && fin && fin < ini) return toast('La fecha de fin es anterior al inicio', 'err');
+    hacer('guardarAjustes', [{ inicio: ini, fin: fin, festivos: fests.slice() }], 'Calendario guardado', 'calendario');
+  };
   $('#gCentro').onclick = () => hacer('guardarAjustes', [{ centro: $('#centro').value }], 'Guardado');
   $('#sync').onclick = () => {
     const b = $('#sync'); b.disabled = true; b.innerHTML = IC.sync + 'Sincronizando…';

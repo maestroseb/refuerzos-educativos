@@ -6,8 +6,9 @@
  */
 
 function inicio() {
-  exigirAcceso_();
+  const yo = exigirAcceso_();
   const c = config_();
+  const visible = registroVisible_(yo);
   const limpia = function(arr) { return arr.map(limpio_); };
   return {
     yo: yo_(),
@@ -17,6 +18,7 @@ function inicio() {
     madreId: c.MADRE_ID || '',
     ultimaSincro: c.ULTIMA_SINCRO || '',
     sincroDiaria: sincroDiariaActiva_(),
+    calendario: calendario_(c),
     bdUrl: yo_().admin ? bd_().getUrl() : '',
     tramos: limpia(filas_(HOJAS.TRAMOS)),
     grupos: limpia(filas_(HOJAS.GRUPOS)),
@@ -30,8 +32,34 @@ function inicio() {
     alumnado: filas_(HOJAS.ALUMNADO).map(function(a) {
       const r = limpio_(a); r.activo = a.activo === '' ? true : si_(a.activo); return r;
     }),
-    registros: filas_(HOJAS.REGISTROS).map(function(r) {
+    registros: filas_(HOJAS.REGISTROS).filter(visible).map(function(r) {
       const o = limpio_(r); o.aprovechamiento = Number(r.aprovechamiento) || 0; return o;
+    })
+  };
+}
+
+/**
+ * Qué registros ve cada cual: la administración (y las cuentas sin email que
+ * eligen docente), todos; el resto, los suyos y los de los grupos en los que
+ * da refuerzo según su horario.
+ */
+function registroVisible_(yo) {
+  if (yo.admin || yo.elegible) return function() { return true; };
+  const grupos = {};
+  filas_(HOJAS.HORARIOS).forEach(function(h) {
+    if (h.docente_id === yo.docenteId) String(h.grupo_ids).split(',').forEach(function(g) { if (g) grupos[g] = 1; });
+  });
+  return function(r) {
+    return r.docente_id === yo.docenteId || String(r.grupo_id).split(',').some(function(g) { return grupos[g]; });
+  };
+}
+
+/** Periodo de refuerzos y festivos (días sin refuerzo) configurados. */
+function calendario_(c) {
+  return {
+    inicio: c.REF_INICIO || '', fin: c.REF_FIN || '',
+    festivos: String(c.FESTIVOS || '').split(',').filter(Boolean).map(function(x) {
+      const p = x.split('..'); return { desde: p[0], hasta: p[1] || p[0] };
     })
   };
 }
@@ -233,6 +261,16 @@ function guardarAjustes(c) {
     if (c.centro != null) setConfig_('CENTRO', String(c.centro).trim());
     if (c.materias) setConfig_('MATERIAS', c.materias.map(function(m) { return String(m).trim(); }).filter(Boolean).join('|'));
     if (c.madreId != null) setConfig_('MADRE_ID', idDeUrl_(c.madreId));
+    const esF = function(f) { return /^\d{4}-\d{2}-\d{2}$/.test(String(f || '')); };
+    if (c.inicio != null) { if (c.inicio && !esF(c.inicio)) throw new Error('Fecha de inicio no válida.'); setConfig_('REF_INICIO', c.inicio); }
+    if (c.fin != null) { if (c.fin && !esF(c.fin)) throw new Error('Fecha de fin no válida.'); setConfig_('REF_FIN', c.fin); }
+    if (c.festivos) {
+      setConfig_('FESTIVOS', c.festivos.map(function(f) {
+        if (!esF(f.desde) || (f.hasta && !esF(f.hasta))) throw new Error('Festivo con fecha no válida.');
+        const h = f.hasta && f.hasta > f.desde ? f.hasta : '';
+        return f.desde + (h ? '..' + h : '');
+      }).join(','));
+    }
     return true;
   });
 }
