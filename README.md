@@ -94,6 +94,25 @@ estas pestañas: `Registros`, `Alumnado`, `Docentes`, `Horarios`, `Tramos`,
    **Sincronizar**. Quien despliega debe tener acceso a esa hoja.
 5. Da de alta al alumnado de refuerzo en **Ajustes → Alumnado**.
 
+## Usarla en otro centro
+
+La app funciona igual **con o sin** la hoja madre de localizaciones y
+sustituciones:
+
+1. Comparte el proyecto de Apps Script (con permiso de lectura) y que en el
+   otro centro hagan **Archivo → Hacer una copia**. O que suban estos archivos
+   con `clasp` a un proyecto nuevo.
+2. Despliegan como se indica arriba. La copia crea su propia hoja de datos en
+   el Drive de quien despliega; no toca la del centro original.
+3. **Con hoja madre:** Ajustes → General → pegar el enlace y Sincronizar.
+   **Sin hoja madre:** en Ajustes, crear los *Tramos y grupos*, dar de alta al
+   *Profesorado* (con su email) y marcar en *Horarios* las franjas de refuerzo
+   de cada docente. Lo demás es igual.
+4. En Ajustes → General, poner el periodo de refuerzos y los festivos.
+
+Sin hoja madre no hay aviso automático de sustituciones ni de ausencias; los
+docentes marcan la sesión como «No se pudo realizar» con el motivo.
+
 ## Desarrollo local
 
 `tools/mock.js` simula `google.script.run` con datos de ejemplo.

@@ -10,14 +10,24 @@ const cacheFilas_ = {};
 function bd_() {
   if (cacheSS_) return cacheSS_;
   const props = PropertiesService.getScriptProperties();
-  const id = props.getProperty(PROP_BD_ID);
+  // La BD se guarda por proyecto: si alguien hace una copia del script para
+  // otro centro (las propiedades se copian), la copia crea su propia BD.
+  const clave = PROP_BD_ID + '_' + ScriptApp.getScriptId();
+  let id = props.getProperty(clave);
+  if (!id && props.getProperty(PROP_BD_ID)) {
+    // Migración de instalaciones anteriores: se adopta una sola vez y se borra
+    // la clave antigua para que las copias posteriores no la hereden.
+    id = props.getProperty(PROP_BD_ID);
+    props.setProperty(clave, id);
+    props.deleteProperty(PROP_BD_ID);
+  }
   let ss;
   // Si ya hay BD y falla al abrir (error transitorio), se lanza el error:
   // nunca se crea otra, que dejaría huérfanos los datos reales.
   if (id) ss = SpreadsheetApp.openById(id);
   else {
     ss = SpreadsheetApp.create(NOMBRE_BD);
-    props.setProperty(PROP_BD_ID, ss.getId());
+    props.setProperty(clave, ss.getId());
   }
   // El esquema solo se revisa cuando cambia (evita ~20 lecturas por petición).
   const firma = ss.getId() + '|' + JSON.stringify(ESQUEMA).length;
