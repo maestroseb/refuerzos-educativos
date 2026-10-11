@@ -614,8 +614,6 @@ svg { flex: none; }
 /* Fila «Ahora» + tarjetas de datos */
 .row1 { display: grid; gap: 12px; margin-bottom: 14px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1180px) { .row1 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; } }
-.row1.sin-ahora { grid-template-columns: minmax(0, 1fr); }
-.row1.sin-ahora #ahora { display: none; }
 .ahora { display: block; width: 100%; text-align: left; background: var(--surface); border-radius: 26px; padding: 16px 18px 14px; box-shadow: 0 2px 12px rgba(20,23,26,.04); transition: transform .25s var(--spring); }
 button.ahora:active { transform: scale(.985); }
 .ahora .r { display: flex; justify-content: space-between; align-items: center; gap: 10px; }

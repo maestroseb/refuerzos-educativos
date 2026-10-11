@@ -153,9 +153,7 @@ function pintarAhora() {
   const c = $('#ahora');
   if (!c) return;
   const fr = franjasHoyOrd(), ahora = ahoraMin(), hoy = hoyIso();
-  // Sin refuerzos hoy (o festivo) el saludo ya lo dice: la tarjeta se oculta y los datos ocupan la fila.
-  c.parentNode.classList.toggle('sin-ahora', !fr.length);
-  if (!fr.length) { c.innerHTML = ''; return; }
+  if (!fr.length) { c.innerHTML = '<div class="ahora"><span class="lbl">Hoy</span><h2>Sin refuerzos en tu horario</h2><p>Puedes registrar cualquier sesión igualmente.</p></div>'; return; }
   const tr = f => S.idx.tramo[f.tramo_id] || {};
   const cur = fr.find(f => minutos(tr(f).hora_inicio) <= ahora && ahora < minutos(tr(f).hora_fin));
   const prox = fr.find(f => minutos(tr(f).hora_inicio) > ahora);
