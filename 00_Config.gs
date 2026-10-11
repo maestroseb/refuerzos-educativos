@@ -37,4 +37,4 @@ const ESQUEMA = {
 
 const DIAS = ['L', 'M', 'X', 'J', 'V'];
 // Motivos por los que un refuerzo previsto no se lleva a cabo.
-const MOTIVOS_DEF = ['Sustitución', 'Ausencia del alumnado', 'Actividad del centro', 'Otro'];
+const MOTIVOS_DEF = ['Sustitución', 'Ausencia del docente', 'Ausencia del alumnado', 'Actividad del centro', 'Otro'];
