@@ -89,7 +89,8 @@ function sincronizar_() {
   const esRefuerzo = function(o) {
     const r = rolById[s(o.rol_loc_id)];
     const t = r ? s(r.nombre) + ' ' + s(r.nombre_largo) : s(o.notas);
-    return /^\s*ref|refuerzo/i.test(t);
+    // «Ref. Ing.» (la tutora se queda mientras la especialista da Inglés) no es refuerzo educativo.
+    return /^\s*ref|refuerzo/i.test(t) && !/\bing(\.|l[eé]s)/i.test(t);
   };
   const c = config_();
   const franjas = ocup.filter(function(o) {
