@@ -484,6 +484,13 @@ svg { flex: none; }
 .row .grow { flex: 1; min-width: 0; }
 .row b { font-weight: 600; display: block; }
 .row small { color: var(--muted); font-size: 12.5px; }
+.row-ord { display: flex; align-items: center; border-radius: 12px; }
+.row-ord .row { flex: 1; min-width: 0; padding-left: 4px; }
+.row-ord.drag { background: var(--surface-2); box-shadow: 0 6px 18px rgba(0,0,0,.14); position: relative; z-index: 2; }
+.grip { display: grid; place-items: center; width: 34px; align-self: stretch; cursor: grab; touch-action: none; color: var(--muted); border-radius: 10px; flex: none; }
+.grip:active, .row-ord.drag .grip { cursor: grabbing; color: var(--ink); }
+.grip svg, .grip-i svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; }
+.grip-i svg { width: 14px; height: 14px; vertical-align: -2px; }
 .row .chev { width: 16px; height: 16px; stroke: var(--muted); fill: none; stroke-width: 2; stroke-linecap: round; }
 .ini { width: 34px; height: 34px; border-radius: 50%; background: var(--bg-2); display: grid; place-items: center; font-size: 12.5px; font-weight: 600; color: var(--ink-2); flex: none; }
 .group-h { font-size: 11.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 14px 12px 6px; }

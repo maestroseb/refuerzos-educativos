@@ -42,7 +42,7 @@
     guardarRegistro: r => Object.assign({}, r, { id: r.id || 'n' + Date.now(), alumno_ids: r.alumno_ids.join(','), creado: '2026-10-08T11:30:00' }),
     borrarRegistro: () => true, guardarAlumno: a => Object.assign({ id: 'n' + Date.now(), activo: true }, a),
     sincronizarMadre: () => ({ docentes: 10, grupos: 12, franjas: 53, tramos: 6 }), activarSincroDiaria: v => v,
-    guardarAjustes: () => true, guardarDocente: d => d, guardarHorarioDocente: () => [], importarAlumnado: (t, g, l) => (l || []).map(x => x.id), guardarTramo: t => t, guardarGrupo: g => g, borrarAlumno: () => 'borrado'
+    guardarAjustes: () => true, guardarDocente: d => d, guardarHorarioDocente: () => [], importarAlumnado: (t, g, l) => (l || []).map(x => x.id), guardarTramo: t => t, guardarGrupo: g => g, ordenarGrupos: () => true, borrarAlumno: () => 'borrado'
   };
   function runner(ok, ko) {
     return new Proxy({}, { get: (_, k) => k === 'withSuccessHandler' ? f => runner(f, ko) : k === 'withFailureHandler' ? f => runner(ok, f) : (...a) => setTimeout(() => { try { if (window.MOCK_FALLO_RED && k === 'guardarRegistro') throw new Error('NetworkError: Connection failure due to HTTP 0'); ok && ok((handlers[k] || (() => null))(...a)); } catch (e) { ko && ko(e); } }, /^(guardar|borrar|importar|lote)/.test(k) ? 1500 : k === 'inicio' ? (window.MOCK_INICIO_MS || 120) : 120) });

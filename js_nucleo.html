@@ -18,6 +18,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const IC = {
   check: '<svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  grip: '<svg viewBox="0 0 24 24"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/></svg>',
   x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   left: '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
   right: '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
@@ -401,6 +402,7 @@ const LOCAL = {
   borrarTramo: id => quita('tramos', x => x.id === id),
   guardarGrupo: g => upsert(S.d.grupos, g),
   borrarGrupo: id => quita('grupos', x => x.id === id),
+  ordenarGrupos: ids => { S.d.grupos.forEach(g => { const i = ids.indexOf(g.id); g.orden = String(i < 0 ? ids.length + 1 : i + 1); }); },
   borrarRegistro: id => quita('registros', x => x.id === id)
 };
 /* Lo que devuelve el servidor, cuando corrige o completa lo aplicado. */

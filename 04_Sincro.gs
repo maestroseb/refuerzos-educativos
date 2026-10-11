@@ -67,8 +67,12 @@ function sincronizar_() {
     return { id: s(t.id), orden: s(t.orden), hora_inicio: hhmm(t.hora_inicio), hora_fin: hhmm(t.hora_fin),
       etiqueta: s(t.etiqueta), es_recreo: si_(t.es_recreo) ? 'true' : 'false' };
   }));
+  // El orden de los grupos que ya existían se conserva (se puede reordenar aquí).
+  const ordenLocal = {};
+  filas_(HOJAS.GRUPOS).forEach(function(g) { if (g.orden !== '' && g.orden != null) ordenLocal[g.id] = g.orden; });
   reemplazar_(HOJAS.GRUPOS, grupos.map(function(g) {
-    return { id: s(g.id), nombre_corto: s(g.nombre_corto), nombre_largo: s(g.nombre_largo), orden: s(g.orden) };
+    const id = s(g.id);
+    return { id: id, nombre_corto: s(g.nombre_corto), nombre_largo: s(g.nombre_largo), orden: id in ordenLocal ? s(ordenLocal[id]) : s(g.orden) };
   }));
   if (semanas.length || !filas_(HOJAS.SEMANAS).length) reemplazar_(HOJAS.SEMANAS, semanas.map(function(w) {
     return { id: s(w.id), fecha_inicio: fecha(w.fecha_inicio), fecha_fin: fecha(w.fecha_fin), tipo: s(w.tipo).toUpperCase() };
