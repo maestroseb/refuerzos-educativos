@@ -678,6 +678,8 @@ button.ahora:active { transform: scale(.985); }
 .reg #cSesion .day:not(.has):not([aria-pressed="true"]) b, .reg #cSesion .day:not(.has):not([aria-pressed="true"]) small { opacity: .5; }
 .reg #cSesion .tramo:not(.ref):not([aria-pressed="true"]) { background: color-mix(in srgb, var(--surface) 45%, transparent); }
 .reg #cSesion .tramo:not(.ref):not([aria-pressed="true"]) b, .reg #cSesion .tramo:not(.ref):not([aria-pressed="true"]) small { opacity: .5; }
+.pill.gran { border-style: dashed; }
+.pill.gran[aria-pressed="true"] { border-style: solid; }
 .pills .pbr { flex-basis: 100%; height: 0; }
 .pills .pgr { align-self: center; min-width: 38px; font: 600 12px var(--f-mono); letter-spacing: .04em; color: var(--muted); }
 .hist-i { grid-template-columns: 4px minmax(0, 1fr) auto; }

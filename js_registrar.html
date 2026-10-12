@@ -77,10 +77,10 @@ function nuevoForm(fecha, tramo, nueva) {
   // Si esa sesión ya está anotada, se abre directamente para editarla.
   const ya = nueva ? [] : registrosDe(S.actor, fecha, tramo);
   if (ya.length) return formEdicion(ya[0]);
-  const f = { id: '', fecha, tramo_id: tramo, grupo_id: grupoPorDefecto(fecha, tramo), alumnos: [], extra: [], materia: '', trabajado: '', estrellas: 0, cambiarGrupo: false, estado: 'realizada', motivo: '' };
+  const f = { id: '', fecha, tramo_id: tramo, grupo_id: grupoPorDefecto(fecha, tramo), alumnos: [], extra: [], materia: '', trabajado: '', estrellas: 0, cambiarGrupo: false, estado: 'realizada', motivo: '', gran: false };
   // Mismo alumnado y materia que la última sesión de esta franja (se puede cambiar).
   const prev = S.d.registros.find(r => !noHecha(r) && r.docente_id === S.actor && r.tramo_id === tramo && diaDe(r.fecha) === diaDe(fecha) && gruposSel(r).sort().join() === gruposSel(f).sort().join() && r.fecha < fecha);
-  if (prev) { f.sugeridos = aluIds(prev).filter(i => S.idx.alu[i] && S.idx.alu[i].activo); f.materia = prev.materia; }
+  if (prev) { f.sugeridos = aluIds(prev).filter(i => S.idx.alu[i] && S.idx.alu[i].activo); f.materia = prev.materia; f.gran = esGran(prev); }
   const b = LS.get('borrador', null);
   // El borrador no borra el grupo del horario si se guardó sin grupo.
   if (b && b.actor === S.actor && b.fecha === fecha && b.tramo_id === tramo && !b.id) Object.assign(f, b, { cambiarGrupo: false, grupo_id: b.grupo_id || f.grupo_id });
@@ -98,7 +98,7 @@ function nuevoForm(fecha, tramo, nueva) {
 function guardarBorrador() {
   const f = S.f;
   if (f.id) return;
-  LS.set('borrador', { actor: S.actor, fecha: f.fecha, tramo_id: f.tramo_id, grupo_id: f.grupo_id, alumnos: f.alumnos, materia: f.materia, trabajado: f.trabajado, estrellas: f.estrellas, estado: f.estado, motivo: f.motivo });
+  LS.set('borrador', { actor: S.actor, fecha: f.fecha, tramo_id: f.tramo_id, grupo_id: f.grupo_id, alumnos: f.alumnos, materia: f.materia, trabajado: f.trabajado, estrellas: f.estrellas, estado: f.estado, motivo: f.motivo, gran: !!f.gran });
 }
 
 VISTAS.registrar = function(el, opts) {
@@ -232,13 +232,13 @@ function pintarTiles() {
 
 /* Formulario con un registro ya guardado; `_orig` sirve para saber si hay cambios. */
 function formEdicion(r) {
-  const f = { id: r.id, fecha: r.fecha, tramo_id: r.tramo_id, grupo_id: r.grupo_id, alumnos: aluIds(r), extra: [], materia: r.materia, trabajado: r.trabajado, estrellas: +r.aprovechamiento || 0, docente_id: r.docente_id, _actor: S.actor, estado: noHecha(r) ? 'no_realizada' : 'realizada', motivo: r.motivo || '' };
+  const f = { id: r.id, fecha: r.fecha, tramo_id: r.tramo_id, grupo_id: r.grupo_id, alumnos: aluIds(r), extra: [], materia: r.materia, trabajado: r.trabajado, estrellas: +r.aprovechamiento || 0, docente_id: r.docente_id, _actor: S.actor, estado: noHecha(r) ? 'no_realizada' : 'realizada', motivo: r.motivo || '', gran: esGran(r) };
   f.extra = f.alumnos.filter(i => !S.idx.alu[i] || !enGrupos(r, S.idx.alu[i]));
   f._orig = firmaForm(f);
   return f;
 }
 function cargarEdicion(r) { S.f = formEdicion(r); }
-const firmaForm = f => JSON.stringify([f.grupo_id, f.alumnos.slice().sort(), f.materia, String(f.trabajado || '').trim(), +f.estrellas || 0, f.estado, f.estado === 'no_realizada' ? f.motivo : '']);
+const firmaForm = f => JSON.stringify([!!f.gran, f.grupo_id, f.alumnos.slice().sort(), f.materia, String(f.trabajado || '').trim(), +f.estrellas || 0, f.estado, f.estado === 'no_realizada' ? f.motivo : '']);
 
 /* ---------- Tarjeta izquierda: cuándo y con quién ---------- */
 function pintarSesion() {
@@ -303,7 +303,8 @@ function pintarSesion() {
     '<div class="field-label' + (repite ? '' : ' mt') + '"><span>Alumnado</span><span class="hint"><span id="aluCount">' + resumenAlu() + '</span>' +
     (repite ? ' · <button class="linkbtn" id="cambiaGrupo" aria-expanded="false">Cambiar grupo</button>' : '') + '</span></div>' +
     '<div class="pills" role="group" aria-label="Alumnado">' + (pills || '<span class="muted" style="font-size:14px;padding:8px 0">' + (g ? 'No hay alumnado de refuerzo en este grupo todavía.' : 'Elige primero el grupo.') + '</span>') +
-    '<button class="pill ghost" id="addAlu">' + IC.plus + 'Añadir</button></div>' +
+    '<button class="pill ghost" id="addAlu">' + IC.plus + 'Añadir</button>' +
+    (sel.length ? '<button class="pill gran" id="granGrupo" aria-pressed="' + !!f.gran + '" title="Sesión con todo el grupo, sin alumnado concreto"><span class="tick">' + IC.check + '</span>Gran grupo</button>' : '') + '</div>' +
     (f.sugeridos && f.sugeridos.length && !f.id ? '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Preseleccionado el alumnado de tu última sesión en esta franja.</p>' : ''));
 
   c.querySelectorAll('[data-fecha]').forEach(b => b.onclick = () => cambiarFecha(b.dataset.fecha));
@@ -329,15 +330,18 @@ function pintarSesion() {
     const id = b.dataset.alu, i = S.f.alumnos.indexOf(id);
     if (i >= 0) S.f.alumnos.splice(i, 1); else S.f.alumnos.push(id);
     b.setAttribute('aria-pressed', i < 0);
+    if (S.f.gran) { S.f.gran = false; const gb = $('#granGrupo'); if (gb) gb.setAttribute('aria-pressed', 'false'); }
     $('#aluCount').textContent = resumenAlu();
     pintarHist(); pintarSavebar(); guardarBorrador();
   });
   $('#addAlu').onclick = hojaAnadirAlumno;
+  const gg = $('#granGrupo');
+  if (gg) gg.onclick = () => { S.f.gran = !S.f.gran; if (S.f.gran) { S.f.alumnos = []; S.f.extra = []; } pintarSesion(); pintarHist(); pintarSavebar(); guardarBorrador(); };
   pintarAhora(); pintarNext();
   const tSel = c.querySelector('.tramo[aria-pressed="true"]');
   if (tSel) requestAnimationFrame(() => { const tc = $('#tramos'); if (tc) tc.scrollLeft = Math.max(0, tSel.offsetLeft - tc.offsetLeft - 40); });
 }
-const resumenAlu = () => S.f.alumnos.length ? S.f.alumnos.length + (S.f.alumnos.length === 1 ? ' seleccionado' : ' seleccionados') : 'Toca para seleccionar';
+const resumenAlu = () => S.f.gran ? 'Todo el grupo' : S.f.alumnos.length ? S.f.alumnos.length + (S.f.alumnos.length === 1 ? ' seleccionado' : ' seleccionados') : 'Toca para seleccionar';
 
 /* Selector de fecha propio (el nativo no se abre dentro de Apps Script):
    mes de lunes a viernes con los mismos puntos que «Mi mes». */
@@ -491,12 +495,13 @@ function pintarHist() {
   const c = $('#cHist');
   if (!c) return;
   const ids = S.f.alumnos.length ? S.f.alumnos : S.d.alumnado.filter(a => enGrupos(S.f, a)).map(a => a.id);
-  const regs = S.d.registros.filter(r => r.id !== S.f.id && !noHecha(r) && aluIds(r).some(i => ids.indexOf(i) >= 0)).slice(0, 4);
+  const gs = gruposSel(S.f);
+  const regs = S.d.registros.filter(r => r.id !== S.f.id && !noHecha(r) && (aluIds(r).some(i => ids.indexOf(i) >= 0) || (esGran(r) && gruposSel(r).some(g => gs.indexOf(g) >= 0)))).slice(0, 4);
   if (!regs.length) { c.hidden = true; return; }
   c.hidden = false;
   c.innerHTML = '<div class="field-label"><span>Sesiones anteriores</span><button class="linkbtn hint" id="verHist">Ver todo</button></div><div class="hist">' + regs.map(r =>
     '<div class="hist-i" style="--c:' + colorMateria(r.materia) + '"><span class="bar"></span><div><div class="meta"><b style="color:var(--ink);font-weight:600">' + esc(relativa(r.fecha)) + '</b><span>' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) + '<span>' + esc(nombreDocId(r.docente_id)) + '</span></div>' +
-    alumnadoPorGrupo(aluIds(r)) + (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</div>' +
+    (esGran(r) ? '<div class="meta"><b>' + esc(nombreGrupo(r.grupo_id)) + ':</b> Gran grupo</div>' : alumnadoPorGrupo(aluIds(r))) + (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</div>' +
     (puedeEditar(r) ? '<button class="btn icon sm hist-ed" data-ed="' + esc(r.id) + '" aria-label="Editar la sesión del ' + esc(fechaCorta(r.fecha)) + '" title="Editar">' + IC.edit + '</button>' : '') + '</div>').join('') + '</div>';
   c.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => {
     const r = S.d.registros.find(x => x.id === b.dataset.ed);
@@ -537,13 +542,13 @@ function pintarSavebar() {
   if (!sb) return;
   if (diaCerrado()) { sb.hidden = true; return; }
   const no = f.estado === 'no_realizada';
-  const falta = no ? (!f.motivo ? 'Indica el motivo' : '') : !gruposSel(f).length ? 'Elige el grupo' : !f.alumnos.length ? 'Selecciona alumnado' : !f.materia ? 'Elige la materia' : !f.estrellas ? 'Valora el aprovechamiento' : '';
+  const falta = no ? (!f.motivo ? 'Indica el motivo' : '') : !gruposSel(f).length ? 'Elige el grupo' : !f.alumnos.length && !f.gran ? 'Selecciona alumnado o Gran grupo' : !f.materia ? 'Elige la materia' : !f.estrellas ? 'Valora el aprovechamiento' : '';
   // La barra aparece al escribir algo (o, si no se realizó, con el motivo elegido); con un registro ya guardado, solo si hay cambios.
   const visible = f.id ? firmaForm(f) !== f._orig : (no ? !!f.motivo : !!String(f.trabajado || '').trim());
   if (!visible) { sb.hidden = true; return; }
   if (sb.hidden) { sb.hidden = false; sb.classList.remove('entra'); void sb.offsetWidth; sb.classList.add('entra'); }
   const t = S.idx.tramo[f.tramo_id];
-  sb.innerHTML = '<div class="sum"><b>' + esc(no ? 'Sesión no realizada' : f.alumnos.length ? f.alumnos.map(i => S.idx.alu[i] ? nombrePildora(S.idx.alu[i].nombre) : nombreAlu(i)).join(', ') : 'Nueva sesión') + '</b><span>' + esc(falta || (relativa(f.fecha) + ' · ' + (t ? t.hora_inicio : '') + ' · ' + (no ? f.motivo : f.materia))) + '</span></div>' +
+  sb.innerHTML = '<div class="sum"><b>' + esc(no ? 'Sesión no realizada' : f.gran ? 'Gran grupo · ' + nombreGrupo(f.grupo_id) : f.alumnos.length ? f.alumnos.map(i => S.idx.alu[i] ? nombrePildora(S.idx.alu[i].nombre) : nombreAlu(i)).join(', ') : 'Nueva sesión') + '</b><span>' + esc(falta || (relativa(f.fecha) + ' · ' + (t ? t.hora_inicio : '') + ' · ' + (no ? f.motivo : f.materia))) + '</span></div>' +
     '<button class="btn" id="guardar"' + (falta ? ' disabled' : '') + '>' + (f.id ? 'Actualizar' : 'Guardar') + '</button>';
   $('#guardar').onclick = guardarSesion;
 }
@@ -556,9 +561,9 @@ function guardarSesion() {
   const prev = f.id ? S.d.registros.find(x => x.id === f.id) : null;
   const p = { id: f.id || nuevoIdLocal(), nuevo: !f.id || !!(prev && prev._pend), fecha: f.fecha, tramo_id: f.tramo_id, grupo_id: f.grupo_id,
     alumno_ids: f.alumnos.slice(), materia: f.estado === 'no_realizada' ? '' : f.materia, trabajado: f.trabajado.trim(),
-    aprovechamiento: f.estado === 'no_realizada' ? 0 : f.estrellas, docente_id: f.docente_id || S.actor, estado: f.estado, motivo: f.estado === 'no_realizada' ? f.motivo : '' };
-  const local = Object.assign({}, prev || {}, p, { alumno_ids: p.alumno_ids.join(','), dia: diaDe(p.fecha), creado: prev ? prev.creado : ahoraIsoLocal(), _pend: true });
-  delete local.nuevo;
+    aprovechamiento: f.estado === 'no_realizada' ? 0 : f.estrellas, docente_id: f.docente_id || S.actor, estado: f.estado, motivo: f.estado === 'no_realizada' ? f.motivo : '', gran: f.estado !== 'no_realizada' && !!f.gran && !f.alumnos.length };
+  const local = Object.assign({}, prev || {}, p, { alumno_ids: p.alumno_ids.join(','), alumnos_txt: p.gran ? 'Gran grupo' : '', dia: diaDe(p.fecha), creado: prev ? prev.creado : ahoraIsoLocal(), _pend: true });
+  delete local.nuevo; delete local.gran;
   const i = S.d.registros.findIndex(x => x.id === p.id);
   if (i >= 0) S.d.registros[i] = local; else S.d.registros.push(local);
   indexar();

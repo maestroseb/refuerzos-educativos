@@ -153,7 +153,9 @@ function guardarRegistro(r) {
     const ids = (r.alumno_ids || []).filter(Boolean);
     const noRealizada = r.estado === 'no_realizada';
     if (noRealizada && !r.motivo) throw new Error('Indica por qué no se realizó.');
-    if (!noRealizada && !ids.length) throw new Error('Selecciona al menos un alumno o alumna.');
+    // Gran grupo: sesión con todo el grupo, sin alumnado concreto.
+    const gran = !noRealizada && !!r.gran && !ids.length;
+    if (!noRealizada && !ids.length && !gran) throw new Error('Selecciona al menos un alumno o alumna (o marca Gran grupo).');
     // r.nuevo: alta con id generado en el navegador (guardado en segundo plano).
     // Si el id ya existe es un reintento del mismo envío: se actualiza, sin duplicar.
     if (r.nuevo && !/^[a-z0-9-]{6,40}$/i.test(String(r.id || ''))) throw new Error('Id no válido.');
@@ -180,7 +182,7 @@ function guardarRegistro(r) {
       motivo: noRealizada ? String(r.motivo).slice(0, 80) : '',
       trabajado: String(r.trabajado || '').slice(0, 5000),
       aprovechamiento: noRealizada ? 0 : Math.max(0, Math.min(5, Number(r.aprovechamiento) || 0)),
-      alumnos_txt: ids.map(function(i) { return alumnos[i] || i; }).join(', '),
+      alumnos_txt: gran ? 'Gran grupo' : ids.map(function(i) { return alumnos[i] || i; }).join(', '),
       docente_txt: doc ? (doc.nombre_completo || doc.nombre_corto) + (a.yo.comoSustituto && doc.sustituto ? ' (sust.: ' + doc.sustituto + ')' : '') : '',
       email: a.yo.email,
       actualizado: ahora
