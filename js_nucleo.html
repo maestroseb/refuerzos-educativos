@@ -139,6 +139,8 @@ function miniEstrellas(n) {
 }
 const aluIds = r => String(r.alumno_ids || '').split(',').filter(Boolean);
 const noHecha = r => r.estado === 'no_realizada';
+/* Sesión en gran grupo: realizada y sin alumnado concreto. */
+const esGran = r => !noHecha(r) && !aluIds(r).length;
 const hechas = regs => regs.filter(r => !noHecha(r));
 /* Sustitución (según la hoja madre) que hizo un docente en esa fecha y tramo. */
 const sustitucionEn = (docId, fecha, tramo) => (S.d.sustituciones || []).find(x => x.sustituto_id === docId && x.fecha === fecha && x.tramo_id === tramo);
@@ -438,7 +440,8 @@ function reaplicarCola(d) {
   COLA.items.forEach(it => {
     if (it.fn) { try { LOCAL[it.fn](...it.args); } catch (e) {} return; }
     const p = it.p, i = d.registros.findIndex(x => x.id === p.id);
-    const local = Object.assign({}, i >= 0 ? d.registros[i] : {}, p, { alumno_ids: p.alumno_ids.join(','), dia: diaDe(p.fecha), _pend: true });
+    const local = Object.assign({}, i >= 0 ? d.registros[i] : {}, p, { alumno_ids: p.alumno_ids.join(','), alumnos_txt: p.gran ? 'Gran grupo' : '', dia: diaDe(p.fecha), _pend: true });
+    delete local.gran;
     delete local.nuevo;
     if (i >= 0) d.registros[i] = local; else d.registros.push(local);
   });

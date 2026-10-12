@@ -96,7 +96,7 @@ function tarjetaRegistro(r) {
     '<div class="meta"><span>' + esc(nombreGrupo(r.grupo_id)) + '</span><span class="num">' + esc(t ? t.hora_inicio : '') + '</span><span>' + esc(nombreDocId(r.docente_id)) + '</span>' + (aluIds(r).length ? '<span>' + esc(aluIds(r).map(nombreAlu).join(', ')) + '</span>' : '') + '</div>' +
     (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</button>';
   return '<button class="entry" data-reg="' + esc(r.id) + '" style="--c:' + colorMateria(r.materia) + '">' +
-    '<div class="who">' + esc(aluIds(r).map(nombreAlu).join(', ') || r.alumnos_txt) + '</div>' +
+    '<div class="who">' + esc(esGran(r) ? 'Gran grupo' : aluIds(r).map(nombreAlu).join(', ') || r.alumnos_txt) + '</div>' +
     '<div class="meta">' + (r._pend ? '<span class="pend">Guardando…</span>' : '') + '<span class="tag" style="--c:' + colorMateria(r.materia) + '">' + esc(r.materia || '—') + '</span>' + miniEstrellas(+r.aprovechamiento) +
     '<span>' + esc(nombreGrupo(r.grupo_id)) + '</span><span class="num">' + esc(t ? t.hora_inicio : '') + '</span><span>' + esc(nombreDocId(r.docente_id)) + '</span></div>' +
     (r.trabajado ? '<p>' + esc(r.trabajado) + '</p>' : '') + '</button>';
@@ -134,7 +134,7 @@ function exportarCSV(regs) {
   const cab = ['Fecha', 'Día', 'Tramo', 'Docente', 'Grupo', 'Alumnado', 'Estado', 'Motivo', 'Materia', 'Aprovechamiento', 'Trabajado'];
   // Comilla delante de = + - @ para que Excel/Sheets no lo ejecuten como fórmula.
   const q = v => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
-  const filas = regs.map(r => [r.fecha, DIA_LARGO[diaDe(r.fecha)] || '', etiquetaTramo(S.idx.tramo[r.tramo_id]), nombreDocId(r.docente_id), nombreGrupo(r.grupo_id), aluIds(r).map(nombreAlu).join(', '), noHecha(r) ? 'No realizada' : 'Realizada', r.motivo || '', r.materia, noHecha(r) ? '' : r.aprovechamiento, r.trabajado].map(q).join(';'));
+  const filas = regs.map(r => [r.fecha, DIA_LARGO[diaDe(r.fecha)] || '', etiquetaTramo(S.idx.tramo[r.tramo_id]), nombreDocId(r.docente_id), nombreGrupo(r.grupo_id), (esGran(r) ? 'Gran grupo' : aluIds(r).map(nombreAlu).join(', ')), noHecha(r) ? 'No realizada' : 'Realizada', r.motivo || '', r.materia, noHecha(r) ? '' : r.aprovechamiento, r.trabajado].map(q).join(';'));
   const blob = new Blob(['﻿' + cab.map(q).join(';') + '\n' + filas.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
