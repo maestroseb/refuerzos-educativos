@@ -543,7 +543,7 @@ function pintarSavebar() {
   if (!visible) { sb.hidden = true; return; }
   if (sb.hidden) { sb.hidden = false; sb.classList.remove('entra'); void sb.offsetWidth; sb.classList.add('entra'); }
   const t = S.idx.tramo[f.tramo_id];
-  sb.innerHTML = '<div class="sum"><b>' + esc(no ? 'Sesión no realizada' : f.alumnos.length ? f.alumnos.map(i => primerNombre(nombreAlu(i))).join(', ') : 'Nueva sesión') + '</b><span>' + esc(falta || (relativa(f.fecha) + ' · ' + (t ? t.hora_inicio : '') + ' · ' + (no ? f.motivo : f.materia))) + '</span></div>' +
+  sb.innerHTML = '<div class="sum"><b>' + esc(no ? 'Sesión no realizada' : f.alumnos.length ? f.alumnos.map(i => S.idx.alu[i] ? nombrePildora(S.idx.alu[i].nombre) : nombreAlu(i)).join(', ') : 'Nueva sesión') + '</b><span>' + esc(falta || (relativa(f.fecha) + ' · ' + (t ? t.hora_inicio : '') + ' · ' + (no ? f.motivo : f.materia))) + '</span></div>' +
     '<button class="btn" id="guardar"' + (falta ? ' disabled' : '') + '>' + (f.id ? 'Actualizar' : 'Guardar') + '</button>';
   $('#guardar').onclick = guardarSesion;
 }
