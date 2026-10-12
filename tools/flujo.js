@@ -19,6 +19,9 @@ const OUT = path.join(__dirname, 'out');
   await p.click('#guardar'); await p.waitForTimeout(400);
   console.log('Tras anotar:', (await p.textContent('#banner')).trim().slice(0, 80));
   await p.click('.tramo[data-tramo="t5"]');
+  // Si el tramo ya está anotado se abre en edición: se pide una sesión nueva.
+  console.log('t5 abre en edición:', await p.evaluate(() => !!S.f.id), '· barra oculta sin cambios:', await p.$eval('#savebar', e => e.hidden));
+  if (await p.$('#otraSes')) { await p.click('#otraSes'); await p.waitForTimeout(150); }
   const pills = await p.$$('#cSesion [data-alu]');
   await pills[0].click(); if (pills[1]) await pills[1].click();
   await p.click('[data-mat="Lengua"]');
@@ -55,7 +58,9 @@ const OUT = path.join(__dirname, 'out');
   // Edición desde diario
   await p.click('[data-view="diario"]'); await p.click('.seg [data-v="mios"]'); await p.waitForTimeout(200);
   await p.click('.entry:not(.no)'); await p.waitForTimeout(1700); await p.click('#edit'); await p.waitForTimeout(300);
-  console.log('Editando:', (await p.textContent('#banner')).trim().slice(0, 60), '| boton:', await p.textContent('#guardar'));
+  console.log('Editando desde diario:', await p.evaluate(() => S.f.id), '| barra oculta sin cambios:', await p.$eval('#savebar', e => e.hidden));
+  await p.fill('#trab', 'Cambio'); await p.waitForTimeout(100);
+  console.log('Tras cambiar, boton:', await p.textContent('#guardar'));
   await b.close();
   console.log(errs.length ? 'ERRORES: ' + errs.join(' | ') : 'Sin errores JS');
 })();
