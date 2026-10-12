@@ -283,9 +283,13 @@ function pintarSesion() {
   const cortos = {};
   alus.concat(extra).forEach(a => { const k = nombrePildora(a.nombre); cortos[k] = (cortos[k] || 0) + 1; });
   const corto = a => { const k = nombrePildora(a.nombre); return cortos[k] > 1 ? nombrePildora(a.nombre, true) : k; };
-  const pill = (a, ex) => '<button class="pill' + (ex ? ' extra' : '') + '" data-alu="' + esc(a.id) + '" title="' + esc(a.nombre) + '" aria-label="' + esc(a.nombre) + '" aria-pressed="' + (f.alumnos.indexOf(a.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(corto(a)) + (ex || conjunto ? ' <small>' + esc(nombreGrupo(a.grupo_id)) + '</small>' : '') + '</button>';
-  // Cada grupo en su propia línea.
-  const enLineas = (arr, ex) => arr.map((a, i) => (i && a.grupo_id !== arr[i - 1].grupo_id ? '<span class="pbr"></span>' : '') + pill(a, ex)).join('');
+  const pill = (a, ex) => '<button class="pill' + (ex ? ' extra' : '') + '" data-alu="' + esc(a.id) + '" title="' + esc(a.nombre) + '" aria-label="' + esc(a.nombre) + '" aria-pressed="' + (f.alumnos.indexOf(a.id) >= 0) + '"><span class="tick">' + IC.check + '</span>' + esc(corto(a)) + '</button>';
+  // Cada grupo en su propia línea; con varios grupos, su nombre una vez al principio.
+  const rotulo = conjunto || extra.length;
+  const enLineas = (arr, ex) => arr.map((a, i) => {
+    const nuevo = !i || a.grupo_id !== arr[i - 1].grupo_id;
+    return (i && nuevo ? '<span class="pbr"></span>' : '') + (nuevo && rotulo ? '<span class="pgr">' + esc(nombreGrupo(a.grupo_id)) + '</span>' : '') + pill(a, ex);
+  }).join('');
   const pills = enLineas(alus, false) + (alus.length && extra.length ? '<span class="pbr"></span>' : '') + enLineas(extra, true);
   const cerrado = diaCerrado();
   c.innerHTML =
