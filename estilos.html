@@ -8,8 +8,8 @@
   --ink: #15171A; --ink-2: #474B52; --muted: #6B7078; --line: #E2E5EA; --line-2: #D3D7DE;
   --accent: #15171A; --on-accent: #FFFFFF;
   --focus: #3E73DA;
-  --lengua: #E2643F; --mates: #3E73DA; --otros: #3E9A6E;
-  --lengua-bg: #FCE3D9; --mates-bg: #DEE8FB; --otros-bg: #DDF0E4;
+  --rojo: #E2643F; --azul: #3E73DA; --otros: #3E9A6E;
+  --rojo-bg: #FCE3D9; --azul-bg: #DEE8FB; --otros-bg: #DDF0E4;
   --star: #F2B33D; --star-off: #D9DCE2;
   --ok: #2F9466; --danger: #C2412A;
   /* Tarjetas pastel (paleta A) */
@@ -32,8 +32,8 @@
   --ink: #EEF0F3; --ink-2: #C3C8CF; --muted: #8E949C; --line: #2A2E34; --line-2: #363B42;
   --accent: #EEF0F3; --on-accent: #111316; --focus: #7EA0F0;
   --t1: #2A2640; --t2: #21301F; --t3: #33321B; --tint: #172636; --navon: #22344A;
-  --lengua: #E26A45; --mates: #5B83E6; --otros: #2AA683;
-  --lengua-bg: #3A2219; --mates-bg: #1D2742; --otros-bg: #16312A;
+  --rojo: #E26A45; --azul: #5B83E6; --otros: #2AA683;
+  --rojo-bg: #3A2219; --azul-bg: #1D2742; --otros-bg: #16312A;
   --star: #F2B53A; --star-off: #3A3F46; --ok: #2AA683; --danger: #EE7A63;
   --seq-0: #23272D; --seq-1: #1F2A45; --seq-2: #2A3F78; --seq-3: #3D5CB0; --seq-4: #5B83E6; --seq-5: #A9C0F5;
   --shadow-1: 0 1px 0 rgba(0,0,0,.3); --shadow-2: 0 12px 32px -8px rgba(0,0,0,.6); --shadow-3: 0 24px 64px -12px rgba(0,0,0,.7);
@@ -44,8 +44,8 @@
   --ink: #EEF0F3; --ink-2: #C3C8CF; --muted: #8E949C; --line: #2A2E34; --line-2: #363B42;
   --accent: #EEF0F3; --on-accent: #111316; --focus: #7EA0F0;
   --t1: #2A2640; --t2: #21301F; --t3: #33321B; --tint: #172636; --navon: #22344A;
-  --lengua: #E26A45; --mates: #5B83E6; --otros: #2AA683;
-  --lengua-bg: #3A2219; --mates-bg: #1D2742; --otros-bg: #16312A;
+  --rojo: #E26A45; --azul: #5B83E6; --otros: #2AA683;
+  --rojo-bg: #3A2219; --azul-bg: #1D2742; --otros-bg: #16312A;
   --star: #F2B53A; --star-off: #3A3F46; --ok: #2AA683; --danger: #EE7A63;
   --seq-0: #23272D; --seq-1: #1F2A45; --seq-2: #2A3F78; --seq-3: #3D5CB0; --seq-4: #5B83E6; --seq-5: #A9C0F5;
   --shadow-1: 0 1px 0 rgba(0,0,0,.3); --shadow-2: 0 12px 32px -8px rgba(0,0,0,.6); --shadow-3: 0 24px 64px -12px rgba(0,0,0,.7);
@@ -177,8 +177,8 @@ svg { flex: none; }
 .pill.mat::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--c); transition: transform .3s var(--spring); }
 .pill.mat[aria-pressed="true"] { background: var(--cb); border-color: var(--c); color: var(--ink); box-shadow: inset 0 0 0 1px var(--c); }
 .pill.mat[aria-pressed="true"]::before { transform: scale(1.3); }
-.m-lengua { --c: var(--lengua); --cb: var(--lengua-bg); }
-.m-mates { --c: var(--mates); --cb: var(--mates-bg); }
+.m-lengua { --c: var(--azul); --cb: var(--azul-bg); }
+.m-mates { --c: var(--rojo); --cb: var(--rojo-bg); }
 .m-otros { --c: var(--otros); --cb: var(--otros-bg); }
 
 /* Selector de días (tira de calendario) */
@@ -316,7 +316,8 @@ svg { flex: none; }
 .pend::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--ink-2); animation: spin .8s linear infinite; }
 @media (min-width: 1024px) { .savebar { left: calc(var(--rail) + 24px); right: 24px; bottom: 20px; max-width: 760px; } }
 /* En PC, botón compacto y flotante en la esquina, con aire alrededor. */
-@media (min-width: 1024px) { .savebar { left: auto; right: 32px; width: min(460px, calc(100vw - var(--rail) - 64px)); max-width: none; padding: 8px 8px 8px 20px; } .savebar .btn { min-height: 42px; } }
+/* En PC, botón compacto y flotante en la esquina, con aire alrededor. */
+@media (min-width: 1024px) { .savebar { left: auto; right: 32px; width: min(345px, calc(100vw - var(--rail) - 64px)); max-width: none; padding: 7px 7px 7px 18px; } .savebar .btn { min-height: 40px; padding: 8px 18px; } }
 .view-reg { padding-bottom: 84px; }
 @media (min-width: 1180px) { .view-reg { padding-bottom: 90px; } }
 
@@ -356,9 +357,9 @@ svg { flex: none; }
 }
 .banner {
   display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--r-m);
-  background: var(--mates-bg); color: var(--ink); font-size: 14px;
+  background: var(--azul-bg); color: var(--ink); font-size: 14px;
 }
-.banner.warn { background: var(--lengua-bg); }
+.banner.warn { background: var(--rojo-bg); }
 .seg-estado { display: flex; width: 100%; }
 .seg-estado button { flex: 1; padding: 9px 12px; }
 .seg-estado button[data-estado="no_realizada"][aria-pressed="true"] { background: var(--ink); color: var(--bg); }
@@ -620,16 +621,16 @@ button.ahora:active { transform: scale(.985); }
 .ahora .lbl { display: inline-flex; align-items: center; gap: 8px; font: 600 11.5px var(--f-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
 .ahora .lbl { display: block; padding-left: 4px; flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ahora .dots { flex: none; }
-.ahora .pulso { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; background: var(--mates); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mates) 22%, transparent); }
+.ahora .pulso { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; background: var(--azul); box-shadow: 0 0 0 4px color-mix(in srgb, var(--azul) 22%, transparent); }
 .ahora h2 { font: 500 28px/1.1 var(--f-ui); letter-spacing: -.03em; margin: 8px 0 3px; }
 .ahora p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
 .ahora .prog { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 8%, transparent); margin: 12px 0 6px; overflow: hidden; }
-.ahora .prog i { display: block; height: 100%; background: var(--mates); border-radius: 3px; }
+.ahora .prog i { display: block; height: 100%; background: var(--azul); border-radius: 3px; }
 .ahora .tt { display: flex; justify-content: space-between; font: 500 11.5px var(--f-mono); color: var(--muted); }
 .dots { display: flex; gap: 7px; align-items: center; }
 .dots i { width: 9px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--ink) 14%, transparent); }
 .dots i.ok { background: var(--ink); }
-.dots i.cur { outline: 2px solid var(--ink); outline-offset: 2px; background: var(--mates); }
+.dots i.cur { outline: 2px solid var(--ink); outline-offset: 2px; background: var(--azul); }
 .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .tile { position: relative; border-radius: 24px; padding: 14px 14px 13px; min-height: 108px; display: flex; flex-direction: column; justify-content: flex-end; }
 .tile:nth-child(1) { background: var(--t1); } .tile:nth-child(2) { background: var(--t2); } .tile:nth-child(3) { background: var(--t3); }
@@ -669,6 +670,18 @@ button.ahora:active { transform: scale(.985); }
 /* Punto de los días: rojo si falta anotar, verde si está completo */
 .day.e-pend .dot { background: var(--danger); }
 .day.e-ok .dot { background: var(--ok); }
+.day[aria-pressed="true"].e-pend .dot { background: var(--danger); box-shadow: 0 0 0 1.5px var(--bg); }
+.day[aria-pressed="true"].e-ok .dot { background: var(--ok); box-shadow: 0 0 0 1.5px var(--bg); }
+/* Días y tramos fuera de tu horario de refuerzo, atenuados (se pueden anotar igual). */
+.reg #cSesion .day:not(.has):not([aria-pressed="true"]):not([disabled]) { background: color-mix(in srgb, var(--surface) 35%, transparent); }
+.reg #cSesion .day:not(.has):not([aria-pressed="true"]) b, .reg #cSesion .day:not(.has):not([aria-pressed="true"]) small { opacity: .5; }
+.reg #cSesion .tramo:not(.ref):not([aria-pressed="true"]) { background: color-mix(in srgb, var(--surface) 45%, transparent); }
+.reg #cSesion .tramo:not(.ref):not([aria-pressed="true"]) b, .reg #cSesion .tramo:not(.ref):not([aria-pressed="true"]) small { opacity: .5; }
+.pills .pbr { flex-basis: 100%; height: 0; }
+.hist-i { grid-template-columns: 4px minmax(0, 1fr) auto; }
+.hist-i .hist-ed { margin-left: auto; flex: none; align-self: flex-start; width: 34px; min-height: 34px; color: var(--ink-2); }
+.hist-i .hist-ed svg { width: 16px; height: 16px; }
+.hist-i .meta b { color: var(--ink-2); font-weight: 600; }
 .day[aria-pressed="true"].e-pend .dot, .day[aria-pressed="true"].e-ok .dot { box-shadow: 0 0 0 2px var(--ink); }
 
 /* Mi mes */

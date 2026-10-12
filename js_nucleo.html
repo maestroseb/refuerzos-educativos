@@ -105,7 +105,7 @@ const tramosLectivos = () => S.d.tramos.filter(t => String(t.es_recreo) !== 'tru
 const nombreDoc = d => d ? (d.nombre_corto || d.nombre_completo || '¿?') : '¿?';
 const nombreDocId = id => S.idx.doc[id] ? nombreDoc(S.idx.doc[id]) : (id ? 'Docente' : '—');
 /* Acepta un grupo o varios ("g1,g2", refuerzo conjunto): "3ºA + 3ºB". */
-const nombreGrupo = id => !id ? 'Sin grupo' : String(id).split(',').filter(Boolean).sort((a, b) => ordenGrupo(a) - ordenGrupo(b)).map(x => S.idx.grupo[x] ? S.idx.grupo[x].nombre_corto : '¿?').join(' + ');
+const nombreGrupo = id => !id ? 'Sin grupo' : String(id).split(',').filter(Boolean).sort(cmpGrupo).map(x => S.idx.grupo[x] ? S.idx.grupo[x].nombre_corto : '¿?').join(' + ');
 const nombreAlu = id => S.idx.alu[id] ? S.idx.alu[id].nombre : 'Alumno/a eliminado';
 const etiquetaTramo = t => t ? (t.hora_inicio ? t.hora_inicio + '–' + t.hora_fin : (t.etiqueta || 'Tramo')) : '—';
 const iniciales = s => String(s || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -121,6 +121,8 @@ function nombrePildora(s, largo) {
   const ap = i >= 0 ? w[i] : '';
   return (nom || t) + (ap ? ' ' + (largo ? ap : ap[0].toUpperCase() + '.') : '');
 }
+/* Orden natural por nombre corto (1ºA, 1ºB, 2ºA…): A siempre antes que B. */
+const cmpGrupo = (a, b) => String((S.idx.grupo[a] || {}).nombre_corto || '~').localeCompare(String((S.idx.grupo[b] || {}).nombre_corto || '~'), 'es', { numeric: true });
 const ordenGrupo = id => { const i = S.d.grupos.findIndex(g => g.id === id); return i < 0 ? 1e4 : i; };
 const primerNombre = s => String(s || '').split(/[\s,]+/)[0];
 function claseMateria(m) {
@@ -129,7 +131,7 @@ function claseMateria(m) {
   if (/mat|cálc|calc|num/.test(s)) return 'm-mates';
   return 'm-otros';
 }
-const colorMateria = m => 'var(--' + claseMateria(m).slice(2) + ')';
+const colorMateria = m => ({ 'm-lengua': 'var(--azul)', 'm-mates': 'var(--rojo)', 'm-otros': 'var(--otros)' })[claseMateria(m)];
 function miniEstrellas(n) {
   let h = '<span class="mini-stars" role="img" aria-label="' + n + ' de 5 estrellas">';
   for (let i = 1; i <= 5; i++) h += IC.star.replace('<svg', '<svg class="' + (i <= n ? 'on' : '') + '"');
